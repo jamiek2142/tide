@@ -1,6 +1,8 @@
 use std::
     {
-        default, ffi::OsString, io, thread::sleep, time::Duration
+        collections::HashMap, default, env, ffi::OsString, io, path::{
+            Path, PathBuf
+        }, thread::sleep, time::Duration, process::Command
     };
 
 use color_eyre::owo_colors::colors::Default;
@@ -26,6 +28,15 @@ use portable_pty::{
     PtySystem
 };
 
+use tui_input::{
+    Input,
+    backend::{
+        crossterm::{
+            EventHandler
+        }
+    }
+};
+
 use ratatui::{
     DefaultTerminal, Frame, buffer::Buffer, layout::{self, Constraint, Layout, Rect}, style::{
         Style, 
@@ -42,14 +53,35 @@ use ratatui::{
 
 use ansi_to_tui::IntoText as _;
 
+#[derive(Default)]
+struct ShellState
+{
+    cwd : PathBuf,
+    env : HashMap<String, String>
+}
+
 pub struct App
 {
-    input : String,
-    character_index : usize,
+    input : Input,
+		file_system : String,
+    shell_state : ShellState,
     exit  : bool,
     output : Vec<String>,
     tx   : Sender<Vec<u8>>,
     rx   : Receiver<Vec<u8>>
+}
+
+impl ShellState
+{
+    pub fn new() -> Self
+    {
+        Self 
+        { 
+            cwd: env::current_dir().unwrap_or_default(), 
+            env: HashMap::new()
+        }
+    }
+    
 }
 
 impl App
@@ -60,8 +92,9 @@ impl App
 
         Self 
         { 
-            input: String::default(), 
-            character_index: usize::default(), 
+            input: Input::default(),
+						file_system : String::default(), 
+            shell_state : ShellState::new(), 
             exit: bool::default(), 
             output: Vec::new(), 
             tx : tx,
@@ -71,7 +104,9 @@ impl App
     }
 
     pub fn run (&mut self, terminal: &mut DefaultTerminal) -> io::Result<()>
-    { 
+    {	
+				self.update_file_system();
+ 
         while !self.exit
         {
             while let Ok(bytes) = self.rx.try_recv() {
@@ -89,17 +124,28 @@ impl App
 
     fn send_cmd (&mut self)
     {
+       /* Clear the output pane. */
+       self.clear_output();
+
+       /* Create a PTY each command. */
        let pty_system = NativePtySystem::default(); 
        let pair       = pty_system.openpty(PtySize::default()).unwrap();
 
        let argv = self.input
+           .value()
            .split_whitespace()
            .map(OsString::from)
            .collect();
 
-       let cmd = CommandBuilder::from_argv(argv);
+       let mut cmd = CommandBuilder::from_argv(argv);
+       cmd.cwd(&self.shell_state.cwd);
+       // TODO: Environment variables.
 
-       let mut _child = pair.slave.spawn_command(cmd).unwrap();
+       let Ok(mut _child) = pair.slave.spawn_command(cmd) else {
+           self.output.push("Unknown command".to_string());
+           // TODO: Optional clear input.
+           return
+       };
        let mut reader = pair.master.try_clone_reader().unwrap();
     
        let tx = self.tx.clone();
@@ -115,8 +161,10 @@ impl App
                 let _ = tx.send(buffer[..n].to_vec());
             }
         });
+    
+       /* Clean out the command buffer */ 
+       self.clear_input();
 
-       self.clear();
     }
 
     fn exit (&mut self)
@@ -126,14 +174,16 @@ impl App
 
     fn draw (&self, frame : &mut Frame)
     {
-        let layout = Layout::vertical([
+        let main_layout = Layout::horizontal([
+                                 Constraint::Percentage(30), 
+                                 Constraint::Percentage(70)
+                               ]).split(frame.area());
+        let sub_layout = Layout::vertical([
                                  Constraint::Fill(21), 
                                  Constraint::Min(1)
-                              ]);
+                               ]).split(main_layout[1]);
 
-        let [output_area, input_area] = frame.area().layout(&layout);
-    
-        let input = Paragraph::new(self.input.as_str())
+        let input = Paragraph::new(self.input.value())
             .style(Style::default())
             .block(Block::bordered().title("Input"));
          
@@ -147,9 +197,14 @@ impl App
         let output = Paragraph::new(text)
             .style(Style::default())
             .block(Block::bordered().title("Output"));
+		
+        let files = Paragraph::new(self.file_system.as_str())
+            .style(Style::default())
+            .block(Block::bordered().title("File System"));
 
-        frame.render_widget(input, input_area);
-        frame.render_widget(output, output_area);
+        frame.render_widget(files, main_layout[0]);
+        frame.render_widget(input, sub_layout[1]);
+        frame.render_widget(output, sub_layout[0]);
     }
 
     fn handle_events (&mut self) -> io::Result<()>
@@ -168,70 +223,71 @@ impl App
         }
         Ok(())
     }
- 
-    fn clamp_cursor (&self, new_cursor_pos : usize) -> usize
-    {
-        new_cursor_pos.clamp(0, self.input.chars().count())
-    }
+   
+    fn update_file_system (&mut self)
+    { 
+			self.file_system = String::from_utf8_lossy(&Command::new("ls")
+                    .current_dir(&self.shell_state.cwd)            
+										.output()
+									  .unwrap()
+										.stdout).to_string();
+		}
 
-    fn byte_index (&self) -> usize
+    fn execute(&mut self)
     {
-        self.input
-            .char_indices()
-            .map(|(i, _)| i)
-            .nth(self.character_index)
-            .unwrap_or(self.input.len())
-    }
+        let argv : Vec<&str> = self.input
+                    .value()
+                    .trim()
+                    .split_whitespace()
+                    .collect();
 
-    fn move_cursor_right (&mut self)
-    {
-        let cursor_moved_right = self.character_index.saturating_add(1);
-        self.character_index = self.clamp_cursor(cursor_moved_right);
-    }
-
-    fn move_cursor_left (&mut self)
-    {
-        let cursor_moved_left = self.character_index.saturating_sub(1);
-        self.character_index = self.clamp_cursor(cursor_moved_left);
-    }
-
-    fn enter_char (&mut self, new_char : char)
-    {
-        let index = self.byte_index();
-        self.input.insert(index, new_char);
-        self.move_cursor_right();
-    }
-
-    fn delete_char (&mut self)
-    {
-        if self.character_index != 0
+        match argv[0] 
         {
-            let current_index = self.character_index;
+            "cd" => {
+                if argv.len() > 1 {
+                    let path_arg = PathBuf::from(argv[1]); 
 
-            let from_left_to_current_index = current_index - 1;
+										let target_path = if path_arg.is_absolute() {
+																				path_arg
+																			} else {
+																				self.shell_state.cwd.join(path_arg)
+																			};
+	                   
+										 // TODO: Handle invalid paths.   
+										 self.clear_output();
+                     self.shell_state.cwd = std::fs::canonicalize(&target_path)
+																							.unwrap_or(self.shell_state.cwd.clone());
+                     self.update_file_system();
+                     self.clear_input();
+                    
+                }
+            }
 
-            let before_char_to_delete = self.input.chars().take(from_left_to_current_index);
-            let after_char_to_delete = self.input.chars().skip(current_index);
-            
-            self.input = before_char_to_delete.chain(after_char_to_delete).collect();
-            self.move_cursor_left();
+            _ => {
+                self.send_cmd();   
+            } 
         }
     }
 
-    fn clear (&mut self)
+    fn clear_output(&mut self)
     {
-        self.input.clear();
-        self.character_index = 0;
+        self.output.clear();
     }
+
+    fn clear_input (&mut self)
+    {
+        self.input.reset();
+     }
 
     fn handle_key_event (&mut self, key_event : KeyEvent) 
     {
         match key_event.code {
             KeyCode::Esc => self.exit(),
-            KeyCode::Char(to_insert) => self.enter_char(to_insert),
-            KeyCode::Backspace => self.delete_char(),
-            KeyCode::Enter => self.send_cmd(),
-            _ => {}
+         // KeyCode::Tab => self.autocomplete(),
+            KeyCode::Enter => self.execute(),
+            _ => {
+                self.input.handle_event(&Event::Key(key_event));
+            }
         }
         
     }
