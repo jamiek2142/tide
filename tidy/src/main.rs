@@ -1,11 +1,29 @@
-use std::{io, thread::sleep};
+use std::
+    {
+        default, ffi::OsString, io, thread::sleep, time::Duration
+    };
 
+use color_eyre::owo_colors::colors::Default;
 use crossterm::event::{
     self, 
     Event, 
     KeyCode,
     KeyEvent, 
     KeyEventKind
+};
+
+use crossbeam_channel::{
+    unbounded,
+    Receiver, 
+    Sender
+};
+
+use portable_pty::{
+    CommandBuilder,
+    NativePtySystem,
+    PtySize,
+    PtyPair,
+    PtySystem
 };
 
 use ratatui::{
@@ -22,25 +40,83 @@ use ratatui::{
     }
 };
 
-#[derive(Debug, Default)]
+use ansi_to_tui::IntoText as _;
+
 pub struct App
 {
     input : String,
     character_index : usize,
-    exit  : bool
+    exit  : bool,
+    output : Vec<String>,
+    tx   : Sender<Vec<u8>>,
+    rx   : Receiver<Vec<u8>>
 }
-
 
 impl App
 {
-    pub fn run (&mut self, terminal: &mut DefaultTerminal) -> io::Result<()>
+    pub fn new () -> Self
     {
+        let (tx, rx) = unbounded::<Vec<u8>>();
+
+        Self 
+        { 
+            input: String::default(), 
+            character_index: usize::default(), 
+            exit: bool::default(), 
+            output: Vec::new(), 
+            tx : tx,
+            rx : rx,
+
+        }
+    }
+
+    pub fn run (&mut self, terminal: &mut DefaultTerminal) -> io::Result<()>
+    { 
         while !self.exit
         {
+            while let Ok(bytes) = self.rx.try_recv() {
+                let text = String::from_utf8_lossy(&bytes);
+
+                self.output.push(text.to_string());
+            }
+
             terminal.draw(|frame| self.draw(frame))?;
+            
             self.handle_events()?;
         }
         Ok(())
+    }
+
+    fn send_cmd (&mut self)
+    {
+       let pty_system = NativePtySystem::default(); 
+       let pair       = pty_system.openpty(PtySize::default()).unwrap();
+
+       let argv = self.input
+           .split_whitespace()
+           .map(OsString::from)
+           .collect();
+
+       let cmd = CommandBuilder::from_argv(argv);
+
+       let mut _child = pair.slave.spawn_command(cmd).unwrap();
+       let mut reader = pair.master.try_clone_reader().unwrap();
+    
+       let tx = self.tx.clone();
+
+       std::thread::spawn(move || { 
+            let mut buffer = [0u8; 1024];
+
+            while let Ok(n) = reader.read(&mut buffer) {
+                if n == 0
+                {
+                    break;
+                }
+                let _ = tx.send(buffer[..n].to_vec());
+            }
+        });
+
+       self.clear();
     }
 
     fn exit (&mut self)
@@ -60,8 +136,15 @@ impl App
         let input = Paragraph::new(self.input.as_str())
             .style(Style::default())
             .block(Block::bordered().title("Input"));
+         
+        let text :Text = self.output
+            .clone()
+            .join("")
+            .into_bytes()
+            .into_text()
+            .unwrap_or_default();
             
-        let output = Paragraph::new("Output will go here")
+        let output = Paragraph::new(text)
             .style(Style::default())
             .block(Block::bordered().title("Output"));
 
@@ -71,19 +154,21 @@ impl App
 
     fn handle_events (&mut self) -> io::Result<()>
     {
-        match event::read()?
+        if event::poll(Duration::from_millis(10))?
         {
-            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
-            }
-            _ => {
-                /* Nothing to do. */
+            match event::read()?
+            {
+                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                    self.handle_key_event(key_event)
+                }
+                _ => {
+                    /* Nothing to do. */
+                }
             }
         }
         Ok(())
     }
-
-   
+ 
     fn clamp_cursor (&self, new_cursor_pos : usize) -> usize
     {
         new_cursor_pos.clamp(0, self.input.chars().count())
@@ -133,12 +218,19 @@ impl App
         }
     }
 
+    fn clear (&mut self)
+    {
+        self.input.clear();
+        self.character_index = 0;
+    }
+
     fn handle_key_event (&mut self, key_event : KeyEvent) 
     {
         match key_event.code {
             KeyCode::Esc => self.exit(),
             KeyCode::Char(to_insert) => self.enter_char(to_insert),
             KeyCode::Backspace => self.delete_char(),
+            KeyCode::Enter => self.send_cmd(),
             _ => {}
         }
         
@@ -148,5 +240,5 @@ impl App
 
 fn main () -> io::Result<()> 
 {
-    ratatui::run(|terminal| App::default().run(terminal))
+    ratatui::run(|terminal| App::new().run(terminal))
 }
