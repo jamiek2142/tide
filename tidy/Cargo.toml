@@ -14,6 +14,7 @@ crossterm = "0.29.0"
 portable-pty = "0.9.0"
 ratatui = "0.30.0"
 tui-input = "0.15.3"
+walkdir = "2.5.0"
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
 [profile.release]

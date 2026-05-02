@@ -2,10 +2,16 @@ use std::
     {
         collections::HashMap, default, env, ffi::OsString, io, path::{
             Path, PathBuf
-        }, thread::sleep, time::Duration, process::Command
+        }, thread::sleep, time::Duration, process::Command, cmp::Ordering,
     };
 
 use color_eyre::owo_colors::colors::Default;
+
+use walkdir::{
+	  DirEntry,
+		WalkDir
+};
+
 use crossterm::event::{
     self, 
     Event, 
@@ -40,14 +46,20 @@ use tui_input::{
 use ratatui::{
     DefaultTerminal, Frame, buffer::Buffer, layout::{self, Constraint, Layout, Rect}, style::{
         Style, 
-        Stylize
+        Color,
+				Modifier,
+				Stylize
     }, symbols::border, text::{
         Line,
         Text
     }, widgets::{
         Block,
         Paragraph,
-        Widget
+        Widget,
+				Borders,
+				List,
+				ListItem,
+			  ListState
     }
 };
 
@@ -60,10 +72,17 @@ struct ShellState
     env : HashMap<String, String>
 }
 
+enum Direction
+{
+	UP,
+	DOWN
+}
+
 pub struct App
 {
     input : Input,
-		file_system : String,
+		file_system : Vec<String>,
+		file_system_state : ListState,
     shell_state : ShellState,
     exit  : bool,
     output : Vec<String>,
@@ -93,7 +112,8 @@ impl App
         Self 
         { 
             input: Input::default(),
-						file_system : String::default(), 
+						file_system : Vec::new(),
+					  file_system_state : ListState::default(), 
             shell_state : ShellState::new(), 
             exit: bool::default(), 
             output: Vec::new(), 
@@ -172,7 +192,7 @@ impl App
         self.exit = true;
     }
 
-    fn draw (&self, frame : &mut Frame)
+    fn draw (&mut self, frame : &mut Frame)
     {
         let main_layout = Layout::horizontal([
                                  Constraint::Percentage(30), 
@@ -198,11 +218,23 @@ impl App
             .style(Style::default())
             .block(Block::bordered().title("Output"));
 		
-        let files = Paragraph::new(self.file_system.as_str())
-            .style(Style::default())
-            .block(Block::bordered().title("File System"));
+	      let items : Vec<ListItem> = self.file_system
+					  .iter()
+						.map(|k| ListItem::new(k.as_str()))
+						.collect();            
 
-        frame.render_widget(files, main_layout[0]);
+				let list = List::new(items)
+						.block(Block::default()
+							.borders(Borders::ALL)
+							.title("Files"))
+						.highlight_style(Style::default()
+							.bg(Color::Yellow)
+							.fg(Color::Black)
+							.add_modifier(Modifier::BOLD))
+						.highlight_symbol(">> ");
+				
+				frame.render_stateful_widget(list, main_layout[0], &mut self.file_system_state);	
+											
         frame.render_widget(input, sub_layout[1]);
         frame.render_widget(output, sub_layout[0]);
     }
@@ -225,12 +257,41 @@ impl App
     }
    
     fn update_file_system (&mut self)
-    { 
-			self.file_system = String::from_utf8_lossy(&Command::new("ls")
-                    .current_dir(&self.shell_state.cwd)            
-										.output()
-									  .unwrap()
-										.stdout).to_string();
+    {
+			self.file_system.clear();
+			self.file_system_state.select(Some(0));
+
+			let walker = WalkDir::new(&self.shell_state.cwd)
+										.sort_by(|a, b| {
+										
+										let a_is_dir = a.file_type().is_dir();
+										let b_is_dir = b.file_type().is_dir();
+
+										match (a_is_dir, b_is_dir) {
+									  	(true, false) => Ordering::Less,
+										  (false, true) => Ordering::Greater,	
+											_ => {
+												a.file_name().cmp(b.file_name())
+											}
+										}
+									 
+									 });	
+		
+			for entry in walker.into_iter().filter_map(|e| e.ok()) 
+			{
+				let depth = entry.depth();
+				
+				// TODO: Recursive depth limit set by left right keys
+				if depth > 1
+			  {
+					continue;
+				}
+				
+			  let prefix = "  ".repeat(depth);
+			
+   			self.file_system.push(prefix + &entry.file_name().to_string_lossy());		
+			}	
+
 		}
 
     fn execute(&mut self)
@@ -279,10 +340,34 @@ impl App
         self.input.reset();
      }
 
+		fn traverse_dirs (&mut self, direction : Direction)
+		{
+			let k = match direction {
+				Direction::UP => { 
+					match self.file_system_state.selected()
+					{
+						Some(k) => if k <= 0 { self.file_system.len() - 1 } else { k - 1 },
+						None => 0, 
+					}		
+				}
+ 				Direction::DOWN => { 
+					match self.file_system_state.selected()
+					{
+						Some(k) => if k >= self.file_system.len() - 1 { 0 } else { k + 1},
+						None => 0, 
+					}
+				}
+			};
+
+			self.file_system_state.select(Some(k));		
+		}
+
     fn handle_key_event (&mut self, key_event : KeyEvent) 
     {
         match key_event.code {
             KeyCode::Esc => self.exit(),
+						KeyCode::Down => self.traverse_dirs(Direction::DOWN),
+						KeyCode::Up => self.traverse_dirs(Direction::UP),
          // KeyCode::Tab => self.autocomplete(),
             KeyCode::Enter => self.execute(),
             _ => {
