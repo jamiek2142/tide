@@ -352,7 +352,7 @@ impl App
 												.parent()												
 												.map_or(String::default(), |x| x.file_name().unwrap_or_default().to_string_lossy().to_string());											
 										
-			// TODO: We should push full path here and allow render to select 
+			// TODO: Fix for root paths. 
 			self.file_system.current_dir_to_render = "../".to_string() + &parent_dir + "/" + &self.shell_state.cwd
 																								.file_name()
 																								.unwrap_or_default()
