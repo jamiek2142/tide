@@ -80,10 +80,18 @@ enum Direction
 	RIGHT,
 }
 
+#[derive(Default)]
+struct FileSystem
+{
+	current_dir_to_render : String,
+	paths_to_render  : Vec<String>,
+	paths_to_objects : Vec<PathBuf>
+}
+
 pub struct App
 {
     input : Input,
-		file_system : Vec<String>,
+		file_system : FileSystem,
 		file_system_state : ListState,
 		depth_limit : usize,
     shell_state : ShellState,
@@ -91,6 +99,15 @@ pub struct App
     output : Vec<String>,
     tx   : Sender<Vec<u8>>,
     rx   : Receiver<Vec<u8>>
+}
+
+impl FileSystem
+{
+	pub fn clear(&mut self)
+	{
+		self.paths_to_render.clear();
+		self.paths_to_objects.clear();
+	}
 }
 
 impl ShellState
@@ -115,7 +132,7 @@ impl App
         Self 
         { 
             input: Input::default(),
-						file_system : Vec::new(),
+						file_system : FileSystem::default(),
 					  file_system_state : ListState::default(),
 						depth_limit : 1, 
             shell_state : ShellState::new(), 
@@ -146,7 +163,7 @@ impl App
         Ok(())
     }
 
-    fn send_cmd (&mut self)
+    fn send_cmd (&mut self, argv : Vec<&str>)
     {
        /* Clear the output pane. */
        self.clear_output();
@@ -155,11 +172,7 @@ impl App
        let pty_system = NativePtySystem::default(); 
        let pair       = pty_system.openpty(PtySize::default()).unwrap();
 
-       let argv = self.input
-           .value()
-           .split_whitespace()
-           .map(OsString::from)
-           .collect();
+       let argv = argv.into_iter().map(OsString::from).collect();
 
        let mut cmd = CommandBuilder::from_argv(argv);
        cmd.cwd(&self.shell_state.cwd);
@@ -222,15 +235,15 @@ impl App
             .style(Style::default())
             .block(Block::bordered().title("Output"));
 		
-	      let items : Vec<ListItem> = self.file_system
+	      let items : Vec<ListItem> = self.file_system.paths_to_render
 					  .iter()
 						.map(|k| ListItem::new(k.as_str()))
 						.collect();            
 
 				let list = List::new(items)
 						.block(Block::default()
-							.borders(Borders::ALL)
-							.title("Files"))
+							// .borders(Borders::ALL)
+							.title(self.file_system.current_dir_to_render.as_str()))
 						.highlight_style(Style::default()
 							.bg(Color::Yellow)
 							.fg(Color::Black)
@@ -254,7 +267,7 @@ impl App
                 }
                 _ => {
                     /* Nothing to do. */
-                }
+             		} 
             }
         }
         Ok(())
@@ -280,28 +293,44 @@ impl App
 										}
 									 
 									 });	
+			
+			let mut path_to_upper_dir = self.shell_state.cwd.clone();
+			
+			self.file_system.current_dir_to_render = self.shell_state.cwd.to_string_lossy().to_string();
 
-			self.file_system.push("..".to_string());
+			path_to_upper_dir.push("..");
+
+			// TODO: We should push full path here and allow render to select 
+			self.file_system.current_dir_to_render = self.shell_state.cwd
+																								.file_name()
+																								.unwrap_or_default()
+																								.to_string_lossy()
+																								.to_string();
+	
+			self.file_system.paths_to_objects.push(path_to_upper_dir);
+			self.file_system.paths_to_render.push("..".to_string());
 	
 			for entry in walker.into_iter().filter_map(|e| e.ok()) 
 			{
 				let depth = entry.depth();
 				
 				// TODO: Recursive depth limit set by left right keys
-				// TODO: Push the current directory path into the pane name (leading truncated)
 				if (depth > self.depth_limit) || (depth == 0)
 			  {
 					continue;
 				}
 				
 			  let prefix = "  ".repeat(depth - 1);
+				
 			
-   			self.file_system.push(prefix + &entry.file_name().to_string_lossy());		
+   			self.file_system.paths_to_render.push(prefix + &entry.file_name().to_string_lossy());		
+			
+				self.file_system.paths_to_objects.push(entry.into_path());
 			}	
 
 		}
 
-		fn change_dir(&mut self, target_path : PathBuf)
+		fn change_dir(&mut self, target_path : & PathBuf)
 		{
 	  	 	// TODO: Handle invalid paths.   
 				self.clear_output();
@@ -311,9 +340,18 @@ impl App
 				self.clear_input();
 		}
 
+		fn open_file(&mut self, target_path :& PathBuf)
+		{
+			let path =	&target_path.to_string_lossy();
+			let cmd = vec!["cat", path];
+
+			self.send_cmd(cmd);
+		}	
+
     fn execute(&mut self)
     {
-        let argv : Vec<&str> = self.input
+			  let input = self.input.clone();
+        let argv : Vec<&str> = input
                     .value()
                     .trim()
                     .split_whitespace()
@@ -325,14 +363,17 @@ impl App
 							return;	
 						};
 					
-					let target_path = self.shell_state.cwd.join(self.file_system[file_index].trim().clone());				  
+					let target_path = self.file_system.paths_to_objects[file_index].clone();					
+					self.output.push(target_path.to_string_lossy().to_string());
 
 					if target_path.is_dir()
 				  {
-						self.change_dir(target_path);
+						self.change_dir(&target_path);
 					}
-
-					// TODO: Open files. 				
+					else if target_path.is_file()
+					{
+						self.open_file(&target_path);
+					}
 
 					return;
 				}	
@@ -350,14 +391,14 @@ impl App
 																			};
 	                 if target_path.is_dir()
 									 {
-											self.change_dir(target_path);
+											self.change_dir(&target_path);
 									 }
                    // TODO: Print invalid directory. 
                 }
             }
 
             _ => {
-                self.send_cmd();   
+                self.send_cmd(argv);   
             } 
         }
     }
@@ -378,14 +419,14 @@ impl App
 				Direction::UP => { 
 					match self.file_system_state.selected()
 					{
-						Some(k) => if k <= 0 { self.file_system.len() - 1 } else { k - 1 },
+						Some(k) => if k <= 0 { self.file_system.paths_to_render.len() - 1 } else { k - 1 },
 						None => 0, 
 					}		
 				}
  				Direction::DOWN => { 
 					match self.file_system_state.selected()
 					{
-						Some(k) => if k >= self.file_system.len() - 1 { 0 } else { k + 1},
+						Some(k) => if k >= self.file_system.paths_to_render.len() - 1 { 0 } else { k + 1},
 						None => 0, 
 					}
 				}
