@@ -1,15 +1,7 @@
 #![allow(warnings)]
 
 use std::{
-    cmp::Ordering,
-    collections::HashMap,
-    default, env,
-    ffi::OsString,
-    io,
-    path::{Path, PathBuf},
-    process::Command,
-    thread::sleep,
-    time::Duration,
+    cmp::Ordering, collections::HashMap, default, env, ffi::OsString, fs, io, path::{Path, PathBuf}, process::Command, thread::sleep, time::Duration
 };
 
 use color_eyre::owo_colors::colors::Default;
@@ -34,6 +26,10 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Widget},
 };
 
+use ratatui_textarea::{
+    TextArea
+};
+
 use ansi_to_tui::IntoText as _;
 
 #[derive(Default)]
@@ -42,11 +38,14 @@ struct ShellState {
     env: HashMap<String, String>,
 }
 
+enum Focus {
+    SHELL,
+    EDITOR
+}
+
 enum Direction {
     UP,
     DOWN,
-    LEFT,
-    RIGHT,
 }
 
 #[derive(Default)]
@@ -66,12 +65,13 @@ pub struct App {
     input: Input,
     file_system: FileSystem,
     file_system_state: ListState,
-    depth_limit: usize,
     shell_state: ShellState,
     exit: bool,
     output: Vec<String>,
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u8>>,
+    focus : Focus,
+    editor : Option<TextArea<'static>>
 }
 
 impl FileSystem {
@@ -96,7 +96,7 @@ impl FilePath {
 
         Self {
             path: path,
-            is_dir: is_dir,
+            is_dir: is_dir
         }
     }
 }
@@ -109,12 +109,13 @@ impl App {
             input: Input::default(),
             file_system: FileSystem::default(),
             file_system_state: ListState::default(),
-            depth_limit: 1,
             shell_state: ShellState::new(),
             exit: bool::default(),
             output: Vec::new(),
             tx: tx,
             rx: rx,
+            focus: Focus::SHELL,
+            editor: None
         }
     }
 
@@ -182,11 +183,12 @@ impl App {
             Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
                 .split(frame.area());
         let sub_layout =
-            Layout::vertical([Constraint::Fill(21), Constraint::Min(1)]).split(main_layout[1]);
+            Layout::vertical([Constraint::Fill(24), Constraint::Min(1)]).split(main_layout[1]);
 
-        let input = Paragraph::new(self.input.value())
+        let text = " > ".to_string() + self.input.value();
+        let input = Paragraph::new(text)
             .style(Style::default())
-            .block(Block::bordered().title("Input"));
+            .block(Block::default().borders(Borders::TOP));
 
         let text: Text = self
             .output
@@ -198,7 +200,7 @@ impl App {
 
         let output = Paragraph::new(text)
             .style(Style::default())
-            .block(Block::bordered().title("Output"));
+            .block(Block::default());
 
         let items: Vec<ListItem> = self
             .file_system
@@ -219,7 +221,7 @@ impl App {
         let list = List::new(items)
             .block(
                 Block::default()
-                    // .borders(Borders::ALL)
+                     .borders(Borders::RIGHT)
                     .title(self.file_system.current_dir_to_render.as_str()),
             )
             .highlight_style(
@@ -233,7 +235,13 @@ impl App {
         frame.render_stateful_widget(list, main_layout[0], &mut self.file_system_state);
 
         frame.render_widget(input, sub_layout[1]);
-        frame.render_widget(output, sub_layout[0]);
+
+        // Render output or text editor
+        match &self.editor
+        {
+            Some(editor) => frame.render_widget(editor, sub_layout[0]),
+            None =>  frame.render_widget(output, sub_layout[0]),
+        }
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -312,7 +320,7 @@ impl App {
             let depth = entry.depth();
 
             // TODO: Recursive depth limit set by left right keys
-            if (depth > self.depth_limit) || (depth == 0) || self.is_dotfile(&entry) {
+            if (depth > 1) || (depth == 0) || self.is_dotfile(&entry) {
                 continue;
             }
 
@@ -321,6 +329,7 @@ impl App {
             self.file_system.paths_to_render.push(FilePath::new(
                 prefix + &entry.file_name().to_string_lossy(),
                 entry.path().is_dir(),
+                
             ));
 
             self.file_system.paths_to_objects.push(entry.into_path());
@@ -337,15 +346,24 @@ impl App {
     }
 
     fn open_file(&mut self, target_path: &PathBuf) {
-        let path = &target_path.to_string_lossy();
-        let cmd = vec!["cat", path];
-
-        self.send_cmd(cmd);
+        
+        let content = if target_path.exists() {
+            fs::read_to_string(target_path).unwrap() 
+        } else {
+            return;
+        };
+        
+        self.editor = Some(TextArea::from(content.lines()));
+        self.focus = Focus::EDITOR
     }
 
     fn execute(&mut self) {
         let input = self.input.clone();
-        let argv: Vec<&str> = input.value().trim().split_whitespace().collect();
+        let argv: Vec<&str> = input
+                                .value()
+                                .trim()
+                                .split_whitespace()
+                                .collect();
 
         if argv.len() == 0 {
             let Some(file_index) = self.file_system_state.selected() else {
@@ -353,7 +371,7 @@ impl App {
             };
 
             let target_path = self.file_system.paths_to_objects[file_index].clone();
-            self.output.push(target_path.to_string_lossy().to_string());
+            // Debug: self.output.push(target_path.to_string_lossy().to_string());
 
             if target_path.is_dir() {
                 self.change_dir(&target_path);
@@ -416,19 +434,7 @@ impl App {
                     }
                 }
                 None => 0,
-            },
-            Direction::LEFT => {
-                if self.depth_limit > 1 {
-                    self.depth_limit = self.depth_limit - 1;
-                    self.update_file_system();
-                }
-                return;
-            }
-            Direction::RIGHT => {
-                self.depth_limit = self.depth_limit + 1;
-                self.update_file_system();
-                return;
-            }
+            } 
         };
 
         self.file_system_state.select(Some(k));
@@ -436,15 +442,79 @@ impl App {
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Esc => self.exit(),
-            KeyCode::Down => self.traverse_dirs(Direction::DOWN),
-            KeyCode::Up => self.traverse_dirs(Direction::UP),
-            KeyCode::Right => self.traverse_dirs(Direction::RIGHT),
-            KeyCode::Left => self.traverse_dirs(Direction::LEFT),
-            // KeyCode::Tab => self.autocomplete(),
-            KeyCode::Enter => self.execute(),
+            KeyCode::Esc   => {
+                match self.focus {
+                    Focus::SHELL => self.exit(),
+                    Focus::EDITOR => {
+                        self.editor = None;
+                        self.focus = Focus::SHELL;
+                    },
+                }
+            },
+            KeyCode::Down  => {
+                match self.focus {
+                  Focus::SHELL  => self.traverse_dirs(Direction::DOWN),
+                  Focus::EDITOR =>  {
+                        match &mut self.editor {
+                            Some(editor) => { 
+                                editor.input(Event::Key(key_event));
+                            },
+                            None => {
+                                /* Nothing to do */
+                            },
+                        }
+                    },
+                }
+            },
+            KeyCode::Up    => {
+                
+                match self.focus {
+                    Focus::SHELL => self.traverse_dirs(Direction::UP),
+                    Focus::EDITOR =>  {
+                        match &mut self.editor {
+                            Some(editor) => { 
+                                editor.input(Event::Key(key_event));
+                            },
+                            None => {
+                                /* Nothing to do */
+                            },
+                        }
+                    },
+                }
+            },
+         // KeyCode::Tab => self.autocomplete(),
+            KeyCode::Enter => {
+                
+                match self.focus {
+                    Focus::SHELL => self.execute(),
+                    Focus::EDITOR =>  {
+                        match &mut self.editor {
+                            Some(editor) => { 
+                                editor.input(Event::Key(key_event));
+                            },
+                            None => {
+                                /* Nothing to do */
+                            },
+                        }
+                    },
+                }
+            },
             _ => {
-                self.input.handle_event(&Event::Key(key_event));
+                match self.focus {
+                    Focus::SHELL => {
+                        self.input.handle_event(&Event::Key(key_event));
+                    },
+                    Focus::EDITOR =>  {
+                        match &mut self.editor {
+                            Some(editor) => { 
+                                editor.input(Event::Key(key_event));
+                            },
+                            None => {
+                                /* Nothing to do */
+                            },
+                        }
+                    },
+                }
             }
         }
     }
