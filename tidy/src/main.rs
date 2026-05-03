@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 use std::
     {
         collections::HashMap, default, env, ffi::OsString, io, path::{
@@ -81,10 +83,17 @@ enum Direction
 }
 
 #[derive(Default)]
+struct FilePath
+{
+	path: String,
+	is_dir : bool
+}
+
+#[derive(Default)]
 struct FileSystem
 {
 	current_dir_to_render : String,
-	paths_to_render  : Vec<String>,
+	paths_to_render  : Vec<FilePath>,
 	paths_to_objects : Vec<PathBuf>
 }
 
@@ -121,6 +130,21 @@ impl ShellState
         }
     }
     
+}
+
+impl FilePath
+{
+	pub fn new (path : String, is_dir : bool) -> Self
+	{
+		let path = if is_dir {
+				path + "/" 
+			} else {
+				path
+			};
+			
+		Self { path : path, is_dir : is_dir } 
+	}
+
 }
 
 impl App
@@ -237,7 +261,14 @@ impl App
 		
 	      let items : Vec<ListItem> = self.file_system.paths_to_render
 					  .iter()
-						.map(|k| ListItem::new(k.as_str()))
+						.map(|k| {
+							let style = if k.is_dir { 
+								Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD) 
+							} else { 
+								Style::default() 
+							};
+							ListItem::new(k.path.as_str()).style(style) 
+						})
 						.collect();            
 
 				let list = List::new(items)
@@ -272,6 +303,22 @@ impl App
         }
         Ok(())
     }
+
+		fn is_dotfile (&self, entry : & DirEntry) -> bool
+		{
+			// TODO: Enable/disable dotfiles.
+			
+			for component in entry.path().iter()
+			{
+				if component.to_string_lossy().starts_with(".")
+				{
+					return true;
+				}
+			}	
+			
+
+			false 
+		}
    
     fn update_file_system (&mut self)
     {
@@ -300,30 +347,38 @@ impl App
 
 			path_to_upper_dir.push("..");
 
+			
+			let parent_dir = self.shell_state.cwd
+												.parent()												
+												.map_or(String::default(), |x| x.file_name().unwrap_or_default().to_string_lossy().to_string());											
+										
 			// TODO: We should push full path here and allow render to select 
-			self.file_system.current_dir_to_render = self.shell_state.cwd
+			self.file_system.current_dir_to_render = "../".to_string() + &parent_dir + "/" + &self.shell_state.cwd
 																								.file_name()
 																								.unwrap_or_default()
-																								.to_string_lossy()
-																								.to_string();
+																								.to_string_lossy();
+		
 	
 			self.file_system.paths_to_objects.push(path_to_upper_dir);
-			self.file_system.paths_to_render.push("..".to_string());
+			self.file_system.paths_to_render.push(FilePath::new("..".to_string(), true));
 	
 			for entry in walker.into_iter().filter_map(|e| e.ok()) 
 			{
 				let depth = entry.depth();
 				
 				// TODO: Recursive depth limit set by left right keys
-				if (depth > self.depth_limit) || (depth == 0)
-			  {
+				if (depth > self.depth_limit) || (depth == 0) || self.is_dotfile(&entry)	 
+				{
 					continue;
 				}
 				
 			  let prefix = "  ".repeat(depth - 1);
 				
 			
-   			self.file_system.paths_to_render.push(prefix + &entry.file_name().to_string_lossy());		
+   			self.file_system.paths_to_render.push(
+					FilePath::new(prefix + &entry.file_name().to_string_lossy(),
+											  entry.path().is_dir())	
+				);		
 			
 				self.file_system.paths_to_objects.push(entry.into_path());
 			}	
