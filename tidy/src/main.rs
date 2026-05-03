@@ -75,7 +75,9 @@ struct ShellState
 enum Direction
 {
 	UP,
-	DOWN
+	DOWN,
+	LEFT,
+	RIGHT,
 }
 
 pub struct App
@@ -83,6 +85,7 @@ pub struct App
     input : Input,
 		file_system : Vec<String>,
 		file_system_state : ListState,
+		depth_limit : usize,
     shell_state : ShellState,
     exit  : bool,
     output : Vec<String>,
@@ -113,7 +116,8 @@ impl App
         { 
             input: Input::default(),
 						file_system : Vec::new(),
-					  file_system_state : ListState::default(), 
+					  file_system_state : ListState::default(),
+						depth_limit : 1, 
             shell_state : ShellState::new(), 
             exit: bool::default(), 
             output: Vec::new(), 
@@ -276,22 +280,35 @@ impl App
 										}
 									 
 									 });	
-		
+
+			self.file_system.push("..".to_string());
+	
 			for entry in walker.into_iter().filter_map(|e| e.ok()) 
 			{
 				let depth = entry.depth();
 				
 				// TODO: Recursive depth limit set by left right keys
-				if depth > 1
+				// TODO: Push the current directory path into the pane name (leading truncated)
+				if (depth > self.depth_limit) || (depth == 0)
 			  {
 					continue;
 				}
 				
-			  let prefix = "  ".repeat(depth);
+			  let prefix = "  ".repeat(depth - 1);
 			
    			self.file_system.push(prefix + &entry.file_name().to_string_lossy());		
 			}	
 
+		}
+
+		fn change_dir(&mut self, target_path : PathBuf)
+		{
+	  	 	// TODO: Handle invalid paths.   
+				self.clear_output();
+				self.shell_state.cwd = std::fs::canonicalize(&target_path)
+																		.unwrap_or(self.shell_state.cwd.clone());
+				self.update_file_system();
+				self.clear_input();
 		}
 
     fn execute(&mut self)
@@ -301,6 +318,24 @@ impl App
                     .trim()
                     .split_whitespace()
                     .collect();
+				
+				if argv.len() == 0
+				{	
+					let Some(file_index) = self.file_system_state.selected() else {
+							return;	
+						};
+					
+					let target_path = self.shell_state.cwd.join(self.file_system[file_index].trim().clone());				  
+
+					if target_path.is_dir()
+				  {
+						self.change_dir(target_path);
+					}
+
+					// TODO: Open files. 				
+
+					return;
+				}	
 
         match argv[0] 
         {
@@ -313,14 +348,11 @@ impl App
 																			} else {
 																				self.shell_state.cwd.join(path_arg)
 																			};
-	                   
-										 // TODO: Handle invalid paths.   
-										 self.clear_output();
-                     self.shell_state.cwd = std::fs::canonicalize(&target_path)
-																							.unwrap_or(self.shell_state.cwd.clone());
-                     self.update_file_system();
-                     self.clear_input();
-                    
+	                 if target_path.is_dir()
+									 {
+											self.change_dir(target_path);
+									 }
+                   // TODO: Print invalid directory. 
                 }
             }
 
@@ -357,6 +389,19 @@ impl App
 						None => 0, 
 					}
 				}
+				Direction::LEFT => {
+					if self.depth_limit > 1
+					{
+						self.depth_limit = self.depth_limit - 1;
+						self.update_file_system();
+					}
+					return;		
+				}
+				Direction::RIGHT => {
+					self.depth_limit = self.depth_limit + 1;
+				  self.update_file_system();
+					return;
+				}
 			};
 
 			self.file_system_state.select(Some(k));		
@@ -368,6 +413,8 @@ impl App
             KeyCode::Esc => self.exit(),
 						KeyCode::Down => self.traverse_dirs(Direction::DOWN),
 						KeyCode::Up => self.traverse_dirs(Direction::UP),
+						KeyCode::Right => self.traverse_dirs(Direction::RIGHT),
+					  KeyCode::Left => self.traverse_dirs(Direction::LEFT),
          // KeyCode::Tab => self.autocomplete(),
             KeyCode::Enter => self.execute(),
             _ => {
