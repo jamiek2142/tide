@@ -552,7 +552,25 @@ impl App {
                     },
                 }
             },
-         // KeyCode::Tab => self.autocomplete(),
+            
+            KeyCode::Modifier(modifiier) => {
+
+                match self.focus {
+                    Focus::SHELL => {
+                    },
+                    Focus::EDITOR => {
+                        match &mut self.editor {
+                            Some(editor) => {
+                                editor.input(key_event, editor_area);
+                            },
+                            None => {
+                                /* Nothing to do */
+                            }          
+                        }
+                    }
+                }
+            }, 
+
             KeyCode::Enter => {
                 
                 match self.focus {
