@@ -309,6 +309,16 @@ impl App {
                 Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                     self.handle_key_event(key_event, editor_area)
                 }
+                Event::Mouse(mouse_event) => {
+                    match &mut self.editor {
+                        Some(editor) => {                        
+                            editor.mouse(mouse_event, editor_area);
+                        },
+                        None => {
+                            /* Nothing to do. */
+                        },
+                    }
+                }
                 _ => { /* Nothing to do. */ }
             }
         }
