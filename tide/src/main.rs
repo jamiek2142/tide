@@ -1,3 +1,7 @@
+/*****************************************************
+ * Copyright 2026, Tide Project
+ *****************************************************/
+
 #![allow(warnings)]
 
 use std::{
@@ -85,6 +89,7 @@ pub struct App {
     rx: Receiver<Vec<u8>>,
     focus : Focus,
     editor : Option<Editor>,
+    open_file : Option<PathBuf>
 }
 
 impl FileSystem {
@@ -162,6 +167,7 @@ impl App {
             rx: rx,
             focus: Focus::SHELL,
             editor: None,
+            open_file : None
        }
     }
 
@@ -406,10 +412,11 @@ impl App {
             return;
         };
 
-        let mut editor = Editor::new("rust", content.as_str(), vesper()).unwrap();
-        
-        self.editor = Some(editor);
-        self.focus = Focus::EDITOR
+        let editor = Editor::new("rust", content.as_str(), vesper()).unwrap();
+       
+        self.open_file = Some(target_path.clone());
+        self.editor    = Some(editor);
+        self.focus     = Focus::EDITOR
     }
 
     fn execute(&mut self) {
@@ -426,8 +433,7 @@ impl App {
             };
 
             let target_path = self.file_system.paths_to_objects[file_index].clone();
-            // Debug: self.output.push(target_path.to_string_lossy().to_string());
-
+            
             if target_path.is_dir() {
                 self.change_dir(&target_path);
             } else if target_path.is_file() {
@@ -501,6 +507,15 @@ impl App {
                 match self.focus {
                     Focus::SHELL => self.exit(),
                     Focus::EDITOR => {
+
+                        let content = self.editor
+                                        .as_ref()
+                                        .unwrap()
+                                        .get_content();
+
+
+                        fs::write(self.open_file.as_ref().unwrap(), content);
+
                         self.editor = None;
                         self.focus = Focus::SHELL;
                     },
