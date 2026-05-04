@@ -1,25 +1,23 @@
 #![allow(warnings)]
 
 use std::{
-    cmp::Ordering, collections::HashMap, default, env, ffi::OsString, fs, io, path::{Path, PathBuf}, process::Command, thread::sleep, time::Duration
+    cmp::Ordering, collections::HashMap, default, env, ffi::OsString, fs, io, path::{Path, PathBuf}, process::Command, thread::sleep, time::Duration, cell::Cell
 };
 
 use color_eyre::owo_colors::colors::Default;
 
 use walkdir::{DirEntry, WalkDir};
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::{cursor, event::{self, Event, KeyCode, KeyEvent, KeyEventKind}};
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use portable_pty::{CommandBuilder, NativePtySystem, PtyPair, PtySize, PtySystem};
 
-use tui_input::{Input, backend::crossterm::EventHandler};
-
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
-    layout::{self, Constraint, Layout, Rect},
+    layout::{self, Constraint, Layout, Position, Rect},
     style::{Color, Modifier, Style, Stylize},
     symbols::border,
     text::{Line, Text},
@@ -28,6 +26,15 @@ use ratatui::{
 
 use ratatui_textarea::{
     TextArea
+};
+
+use ratatui_code_editor::{
+    theme::{
+        vesper
+    },
+    editor::{
+        Editor
+    },
 };
 
 use ansi_to_tui::IntoText as _;
@@ -61,9 +68,15 @@ struct FileSystem {
     paths_to_objects: Vec<PathBuf>,
 }
 
+#[derive(Default, Clone)]
+struct Input
+{
+    value : String
+}
+
 pub struct App {
     input: Input,
-    file_system: FileSystem,
+    file_system:FileSystem,
     file_system_state: ListState,
     shell_state: ShellState,
     exit: bool,
@@ -71,7 +84,7 @@ pub struct App {
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u8>>,
     focus : Focus,
-    editor : Option<TextArea<'static>>
+    editor : Option<Editor>,
 }
 
 impl FileSystem {
@@ -101,6 +114,39 @@ impl FilePath {
     }
 }
 
+// TODO: Implement better input handling - move to dedicated file. 
+impl Input
+{
+    pub fn reset (&mut self)
+    {
+        self.value.clear();
+    }
+
+    pub fn value (&self) -> &str
+    {
+        self.value.as_str()
+    }
+
+    pub fn handle_event(&mut self, event : &Event)
+    {
+        match event
+        {
+            Event::Key(key) => {
+                match key.code {
+                    KeyCode::Char(c) => self.value.push(c),
+                    KeyCode::Backspace => { self.value.pop(); }
+                    _ => {
+
+                    }
+                }
+            },
+            _ => {
+            },
+        }
+    }
+        
+}
+
 impl App {
     pub fn new() -> Self {
         let (tx, rx) = unbounded::<Vec<u8>>();
@@ -115,8 +161,8 @@ impl App {
             tx: tx,
             rx: rx,
             focus: Focus::SHELL,
-            editor: None
-        }
+            editor: None,
+       }
     }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
@@ -131,8 +177,7 @@ impl App {
 
             terminal.draw(|frame| self.draw(frame))?;
 
-            self.handle_events()?;
-        }
+         }
         Ok(())
     }
 
@@ -178,7 +223,7 @@ impl App {
         self.exit = true;
     }
 
-    fn draw(&mut self, frame: &mut Frame) {
+    fn draw(&mut self, frame: &mut Frame){
         let main_layout =
             Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
                 .split(frame.area());
@@ -233,22 +278,30 @@ impl App {
             .highlight_symbol(">> ");
 
         frame.render_stateful_widget(list, main_layout[0], &mut self.file_system_state);
-
         frame.render_widget(input, sub_layout[1]);
 
         // Render output or text editor
-        match &self.editor
-        {
-            Some(editor) => frame.render_widget(editor, sub_layout[0]),
-            None =>  frame.render_widget(output, sub_layout[0]),
+        match &self.editor {
+            Some (editor) => {
+                frame.render_widget(editor, sub_layout[0]);
+           
+                let cursor = editor.get_visible_cursor(&sub_layout[0]);
+
+                if let Some((x,y)) = cursor {
+                    frame.set_cursor_position(Position::new(x,y));
+                }
+            }, 
+            None => frame.render_widget(output, sub_layout[0]),
         }
+
+        self.handle_events(&sub_layout[0]).unwrap();
     }
 
-    fn handle_events(&mut self) -> io::Result<()> {
+    fn handle_events(&mut self, editor_area : &Rect) -> io::Result<()> {
         if event::poll(Duration::from_millis(10))? {
             match event::read()? {
                 Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                    self.handle_key_event(key_event)
+                    self.handle_key_event(key_event, editor_area)
                 }
                 _ => { /* Nothing to do. */ }
             }
@@ -352,8 +405,10 @@ impl App {
         } else {
             return;
         };
+
+        let mut editor = Editor::new("rust", content.as_str(), vesper()).unwrap();
         
-        self.editor = Some(TextArea::from(content.lines()));
+        self.editor = Some(editor);
         self.focus = Focus::EDITOR
     }
 
@@ -440,7 +495,7 @@ impl App {
         self.file_system_state.select(Some(k));
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
+    fn handle_key_event(&mut self, key_event: KeyEvent, editor_area : &Rect) {
         match key_event.code {
             KeyCode::Esc   => {
                 match self.focus {
@@ -457,7 +512,7 @@ impl App {
                   Focus::EDITOR =>  {
                         match &mut self.editor {
                             Some(editor) => { 
-                                editor.input(Event::Key(key_event));
+                                editor.input(key_event, editor_area);
                             },
                             None => {
                                 /* Nothing to do */
@@ -473,7 +528,7 @@ impl App {
                     Focus::EDITOR =>  {
                         match &mut self.editor {
                             Some(editor) => { 
-                                editor.input(Event::Key(key_event));
+                                editor.input(key_event, editor_area);
                             },
                             None => {
                                 /* Nothing to do */
@@ -490,7 +545,7 @@ impl App {
                     Focus::EDITOR =>  {
                         match &mut self.editor {
                             Some(editor) => { 
-                                editor.input(Event::Key(key_event));
+                                editor.input(key_event, editor_area);
                             },
                             None => {
                                 /* Nothing to do */
@@ -507,7 +562,7 @@ impl App {
                     Focus::EDITOR =>  {
                         match &mut self.editor {
                             Some(editor) => { 
-                                editor.input(Event::Key(key_event));
+                                editor.input(key_event,editor_area);
                             },
                             None => {
                                 /* Nothing to do */
