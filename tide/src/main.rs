@@ -619,5 +619,10 @@ impl App {
 }
 
 fn main() -> io::Result<()> {
-    ratatui::run(|terminal| App::new().run(terminal))
+    let mut terminal = ratatui::init();
+    
+    App::new().run(&mut terminal)?;
+
+    ratatui::restore();
+    Ok(())
 }
