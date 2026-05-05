@@ -228,14 +228,33 @@ impl App {
         self.exit = true;
     }
 
-    fn draw(&mut self, frame: &mut Frame){
-        let main_layout =
-            Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
-                .split(frame.area());
-        let sub_layout =
-            Layout::vertical([Constraint::Fill(24), Constraint::Min(1)]).split(main_layout[1]);
+    fn draw(&mut self, frame: &mut Frame) {
 
-        let shell_layout = Layout::horizontal([Constraint::Fill(24), Constraint::Min(1)]).split(sub_layout[1]);
+        let [file_area, main_area] = 
+            Layout::horizontal([
+                Constraint::Percentage(30), 
+                Constraint::Percentage(70)
+            ]).split(frame.area())[..] 
+            else { 
+                todo!() 
+            };
+        let [editor_area, shell_output, shell_input] = 
+            Layout::vertical([
+                Constraint::Fill(24), 
+                Constraint::Min(10), 
+                Constraint::Min(1)
+            ]).split(main_area)[..] 
+            else {
+                 todo!() 
+            };
+        let [shell_input, focus_area] = 
+            Layout::horizontal([
+                Constraint::Fill(24), 
+                Constraint::Min(1)
+            ]).split(shell_input)[..] 
+            else { 
+                todo!() 
+            };
 
         let text = " > ".to_string() + self.input.value();
         let input = Paragraph::new(text)
@@ -289,26 +308,29 @@ impl App {
             Focus::EDITOR => Paragraph::new("E"),
         };
 
-        frame.render_widget(focus, shell_layout[1]);
+        frame.render_widget(focus, focus_area);
 
-        frame.render_stateful_widget(list, main_layout[0], &mut self.file_system_state);
-        frame.render_widget(input, shell_layout[0]);
+        frame.render_stateful_widget(list, file_area, &mut self.file_system_state);
+        frame.render_widget(input, shell_input);
 
         // Render output or text editor
         match &self.editor {
             Some (editor) => {
-                frame.render_widget(editor, sub_layout[0]);
+                frame.render_widget(editor, editor_area);
            
-                let cursor = editor.get_visible_cursor(&sub_layout[0]);
+                let cursor = editor.get_visible_cursor(&editor_area);
 
                 if let Some((x,y)) = cursor {
                     frame.set_cursor_position(Position::new(x,y));
                 }
             }, 
-            None => frame.render_widget(output, sub_layout[0]),
+            None => {  
+            }
         }
+        
+        frame.render_widget(output, shell_output);
 
-        self.handle_events(&sub_layout[0]).unwrap();
+        self.handle_events(&editor_area).unwrap();
     }
 
     fn handle_events(&mut self, editor_area : &Rect) -> io::Result<()> {
