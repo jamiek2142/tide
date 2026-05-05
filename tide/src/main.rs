@@ -33,12 +33,9 @@ use ratatui_textarea::{
 };
 
 use ratatui_code_editor::{
-    theme::{
-        vesper
-    },
     editor::{
-        Editor
-    },
+        self, Editor
+    }, theme::vesper
 };
 
 use ansi_to_tui::IntoText as _;
@@ -49,7 +46,9 @@ struct ShellState {
     env: HashMap<String, String>,
 }
 
+#[derive(PartialEq)]
 enum Focus {
+    FILES,
     SHELL,
     EDITOR
 }
@@ -165,7 +164,7 @@ impl App {
             output: Vec::new(),
             tx: tx,
             rx: rx,
-            focus: Focus::SHELL,
+            focus: Focus::FILES,
             editor: None,
             open_file : None
        }
@@ -236,10 +235,12 @@ impl App {
         let sub_layout =
             Layout::vertical([Constraint::Fill(24), Constraint::Min(1)]).split(main_layout[1]);
 
+        let shell_layout = Layout::horizontal([Constraint::Fill(24), Constraint::Min(1)]).split(sub_layout[1]);
+
         let text = " > ".to_string() + self.input.value();
         let input = Paragraph::new(text)
             .style(Style::default())
-            .block(Block::default().borders(Borders::TOP));
+            .block(Block::default());
 
         let text: Text = self
             .output
@@ -272,7 +273,6 @@ impl App {
         let list = List::new(items)
             .block(
                 Block::default()
-                     .borders(Borders::RIGHT)
                     .title(self.file_system.current_dir_to_render.as_str()),
             )
             .highlight_style(
@@ -282,9 +282,17 @@ impl App {
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol(">> ");
+      
+        let focus = match self.focus {
+            Focus::FILES  => Paragraph::new("F"),
+            Focus::SHELL  => Paragraph::new("S"),
+            Focus::EDITOR => Paragraph::new("E"),
+        };
+
+        frame.render_widget(focus, shell_layout[1]);
 
         frame.render_stateful_widget(list, main_layout[0], &mut self.file_system_state);
-        frame.render_widget(input, sub_layout[1]);
+        frame.render_widget(input, shell_layout[0]);
 
         // Render output or text editor
         match &self.editor {
@@ -426,7 +434,20 @@ impl App {
        
         self.open_file = Some(target_path.clone());
         self.editor    = Some(editor);
-        self.focus     = Focus::EDITOR
+    }
+
+    fn handle_file_key_press (&mut self) 
+    {
+        let Some(file_index) = self.file_system_state.selected() else {
+            return;
+        };
+
+        let target_path = self.file_system.paths_to_objects[file_index].clone();
+            
+        if target_path.is_dir() {
+            self.change_dir(&target_path);
+        }
+        return;
     }
 
     fn execute(&mut self) {
@@ -438,19 +459,7 @@ impl App {
                                 .collect();
 
         if argv.len() == 0 {
-            let Some(file_index) = self.file_system_state.selected() else {
-                return;
-            };
-
-            let target_path = self.file_system.paths_to_objects[file_index].clone();
-            
-            if target_path.is_dir() {
-                self.change_dir(&target_path);
-            } else if target_path.is_file() {
-                self.open_file(&target_path);
-            }
-
-            return;
+            return;         
         }
 
         match argv[0] {
@@ -509,13 +518,19 @@ impl App {
         };
 
         self.file_system_state.select(Some(k));
+        
+        if self.file_system.paths_to_objects[k].is_file()
+        {
+            self.open_file(&self.file_system.paths_to_objects[k].clone());   
+        }
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent, editor_area : &Rect) {
         match key_event.code {
             KeyCode::Esc   => {
                 match self.focus {
-                    Focus::SHELL => self.exit(),
+                    Focus::SHELL |
+                    Focus::FILES  => self.exit(),
                     Focus::EDITOR => {
 
                         let content = self.editor
@@ -526,14 +541,17 @@ impl App {
 
                         fs::write(self.open_file.as_ref().unwrap(), content);
 
-                        self.editor = None;
+                        // self.editor = None;
                         self.focus = Focus::SHELL;
                     },
                 }
             },
             KeyCode::Down  => {
                 match self.focus {
-                  Focus::SHELL  => self.traverse_dirs(Direction::DOWN),
+                  Focus::FILES  => self.traverse_dirs(Direction::DOWN),
+                  Focus::SHELL  => {
+                        // TODO: Handle shell history 
+                  },
                   Focus::EDITOR =>  {
                         match &mut self.editor {
                             Some(editor) => { 
@@ -549,8 +567,11 @@ impl App {
             KeyCode::Up    => {
                 
                 match self.focus {
-                    Focus::SHELL => self.traverse_dirs(Direction::UP),
-                    Focus::EDITOR =>  {
+                    Focus::FILES  => self.traverse_dirs(Direction::UP),
+                    Focus::SHELL  => {
+                        // TODO: Handle shell history
+                    },
+                    Focus::EDITOR => {
                         match &mut self.editor {
                             Some(editor) => { 
                                 editor.input(key_event, editor_area);
@@ -566,7 +587,11 @@ impl App {
             KeyCode::Modifier(modifiier) => {
 
                 match self.focus {
+                    Focus::FILES => {
+                        // TODO: File modifiiers.
+                    },
                     Focus::SHELL => {
+                        // TODO: Shell modifiers.
                     },
                     Focus::EDITOR => {
                         match &mut self.editor {
@@ -579,12 +604,26 @@ impl App {
                         }
                     }
                 }
-            }, 
+            },
+
+            KeyCode::Tab => {
+                
+                match self.focus {
+                    Focus::FILES  => self.focus = Focus::SHELL, 
+                    Focus::SHELL  => self.focus = Focus::EDITOR,
+                    Focus::EDITOR => self.focus = Focus::FILES,
+                }
+            },
 
             KeyCode::Enter => {
                 
                 match self.focus {
-                    Focus::SHELL => self.execute(),
+                    Focus::FILES  => {
+                        self.handle_file_key_press(); 
+                    },
+                    Focus::SHELL  => {
+                        self.execute();
+                    },
                     Focus::EDITOR =>  {
                         match &mut self.editor {
                             Some(editor) => { 
@@ -599,6 +638,9 @@ impl App {
             },
             _ => {
                 match self.focus {
+                    Focus::FILES => {
+                        // TODO: Handle other keys
+                    },  
                     Focus::SHELL => {
                         self.input.handle_event(&Event::Key(key_event));
                     },
