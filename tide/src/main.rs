@@ -29,6 +29,7 @@ use std::io;
 fn main() -> io::Result<()> {
     let mut terminal = ratatui::init();
     
+    // TODO: Get result and return it 
     App::new().run(&mut terminal)?;
 
     ratatui::restore();
