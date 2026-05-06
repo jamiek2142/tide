@@ -21,11 +21,12 @@ use portable_pty::{CommandBuilder, NativePtySystem, PtyPair, PtySize, PtySystem}
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
-    layout::{self, Constraint, Layout, Position, Rect},
+    layout::{self, Constraint, Layout, Position, Rect, Spacing},
     style::{Color, Modifier, Style, Stylize},
     symbols::border,
     text::{Line, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Widget},
+    symbols::merge::MergeStrategy
 };
 
 use ratatui_textarea::{
@@ -234,7 +235,7 @@ impl App {
             Layout::horizontal([
                 Constraint::Percentage(30), 
                 Constraint::Percentage(70)
-            ]).split(frame.area())[..] 
+            ]).spacing(Spacing::Overlap(1)).split(frame.area())[..] 
             else { 
                 todo!() 
             };
@@ -247,19 +248,28 @@ impl App {
             else {
                  todo!() 
             };
-        let [shell_input, focus_area] = 
-            Layout::horizontal([
-                Constraint::Fill(24), 
-                Constraint::Min(1)
-            ]).split(shell_input)[..] 
-            else { 
-                todo!() 
+        
+        let text = " > ".to_string() + self.input.value();
+
+        let input_block = {
+               
+                let block = Block::new()
+                    .borders(Borders::LEFT)
+                    .merge_borders(MergeStrategy::Exact);
+
+                match self.focus {      
+                    Focus::SHELL => {
+                        block.border_style(Style::new().light_green())
+                    }      
+                    _ => {
+                        block
+                    }
+                }
             };
 
-        let text = " > ".to_string() + self.input.value();
         let input = Paragraph::new(text)
             .style(Style::default())
-            .block(Block::default());
+            .block(input_block);
 
         let text: Text = self
             .output
@@ -269,9 +279,25 @@ impl App {
             .into_text()
             .unwrap_or_default();
 
+        let output_block = {
+               
+                let block = Block::new()
+                    .borders(Borders::LEFT | Borders::TOP)
+                    .merge_borders(MergeStrategy::Exact);
+                
+                match self.focus {      
+                    Focus::SHELL => {
+                        block.border_style(Style::new().light_green())
+                    }      
+                    _ => {
+                        block
+                    }
+                }
+            };
+
         let output = Paragraph::new(text)
             .style(Style::default())
-            .block(Block::default());
+            .block(output_block);
 
         let items: Vec<ListItem> = self
             .file_system
@@ -289,10 +315,24 @@ impl App {
             })
             .collect();
 
+        let files_block = {
+                let block = Block::new()
+                    .borders(Borders::RIGHT)                    
+                    .merge_borders(MergeStrategy::Exact);
+               
+                match self.focus {
+                    Focus::FILES => {
+                        block.border_style(Style::new().light_green())
+                    }
+                    _ => {
+                        block
+                    } 
+                }
+            }; 
+
         let list = List::new(items)
             .block(
-                Block::default()
-                    .title(self.file_system.current_dir_to_render.as_str()),
+                files_block.title(self.file_system.current_dir_to_render.as_str()),
             )
             .highlight_style(
                 Style::default()
@@ -302,14 +342,6 @@ impl App {
             )
             .highlight_symbol(">> ");
       
-        let focus = match self.focus {
-            Focus::FILES  => Paragraph::new("F"),
-            Focus::SHELL  => Paragraph::new("S"),
-            Focus::EDITOR => Paragraph::new("E"),
-        };
-
-        frame.render_widget(focus, focus_area);
-
         frame.render_stateful_widget(list, file_area, &mut self.file_system_state);
         frame.render_widget(input, shell_input);
 
@@ -631,9 +663,9 @@ impl App {
             KeyCode::Tab => {
                 
                 match self.focus {
-                    Focus::FILES  => self.focus = Focus::SHELL, 
-                    Focus::SHELL  => self.focus = Focus::EDITOR,
-                    Focus::EDITOR => self.focus = Focus::FILES,
+                    Focus::FILES  => self.focus = Focus::EDITOR, 
+                    Focus::EDITOR => self.focus = Focus::SHELL,
+                    Focus::SHELL  => self.focus = Focus::FILES,
                 }
             },
 
