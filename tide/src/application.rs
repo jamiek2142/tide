@@ -103,6 +103,7 @@ impl App {
         Ok(())
     }
 
+    // TODO: pull into shell.rs
     fn send_cmd(&mut self, argv: Vec<&str>) {
         /* Clear the output pane. */
         self.clear_output();
