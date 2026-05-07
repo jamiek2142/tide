@@ -63,7 +63,6 @@ pub struct App {
     shell : Shell,
     exit : bool,
     output : Vec<String>,
-    tx : Sender<Vec<u8>>,
     rx : Receiver<Vec<u8>>,
     focus : Focus,
     editor : Option<Editor>,
@@ -76,10 +75,9 @@ impl App {
         Self {
             input: Input::default(),
             file_system: FileSystem::default(),
-            shell: Shell::new(),
+            shell: Shell::new(tx),
             exit: bool::default(),
             output: Vec::new(),
-            tx: tx,
             rx: rx,
             focus: Focus::FILES,
             editor: None,
@@ -101,45 +99,6 @@ impl App {
 
          }
         Ok(())
-    }
-
-    // TODO: pull into shell.rs
-    fn send_cmd(&mut self, argv: Vec<&str>) {
-        /* Clear the output pane. */
-        self.clear_output();
-
-        /* Create a PTY each command. */
-        let pty_system = NativePtySystem::default();
-        let pair = pty_system.openpty(PtySize::default()).unwrap();
-
-        let argv = argv.into_iter().map(OsString::from).collect();
-
-        let mut cmd = CommandBuilder::from_argv(argv);
-        cmd.cwd(self.shell.get_cwd());
-        // TODO: Environment variables.
-
-        let Ok(mut _child) = pair.slave.spawn_command(cmd) else {
-            self.output.push("Unknown command".to_string());
-            // TODO: Optional clear input.
-            return;
-        };
-        let mut reader = pair.master.try_clone_reader().unwrap();
-
-        let tx = self.tx.clone();
-
-        std::thread::spawn(move || {
-            let mut buffer = [0u8; 1024];
-
-            while let Ok(n) = reader.read(&mut buffer) {
-                if n == 0 {
-                    break;
-                }
-                let _ = tx.send(buffer[..n].to_vec());
-            }
-        });
-
-        /* Clean out the command buffer */
-        self.clear_input();
     }
 
     fn exit(&mut self) {
@@ -382,12 +341,10 @@ impl App {
     }
 
     fn change_dir(&mut self, target_path: &PathBuf) {
-        // TODO: Handle invalid paths.
-        self.clear_output();
+        // TODO: Handle invalid paths. 
         self.shell.set_cwd(
             std::fs::canonicalize(&target_path).unwrap_or(self.shell.cwd_as_path()));
         self.update_file_system();
-        self.clear_input();
     }
 
     fn open_file(&mut self, target_path: &PathBuf) {
@@ -448,9 +405,11 @@ impl App {
             }
 
             _ => {
-                self.send_cmd(argv);
+                self.shell.send_cmd(argv);
             }
         }
+
+        self.clear_input();
     }
 
     fn clear_output(&mut self) {
