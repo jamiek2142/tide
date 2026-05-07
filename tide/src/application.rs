@@ -19,7 +19,6 @@ use color_eyre::owo_colors::colors::Default;
 use walkdir::{DirEntry, WalkDir};
 
 use crossterm::{cursor, event, event::{Event, KeyCode, KeyEvent, KeyEventKind}};
-
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use portable_pty::{CommandBuilder, NativePtySystem, PtyPair, PtySize, PtySystem};
@@ -73,7 +72,7 @@ impl App {
         let (tx, rx) = unbounded::<Vec<u8>>();
 
         Self {
-            input: Input::default(),
+            input: Input::new(),
             file_system: FileSystem::default(),
             shell: Shell::new(tx),
             exit: bool::default(),
@@ -96,6 +95,10 @@ impl App {
             }
 
             terminal.draw(|frame| self.draw(frame))?;
+
+            if let Some(command) = self.input.pop_command() { 
+                self.execute(command);  
+            };
 
          }
         Ok(())
@@ -127,7 +130,7 @@ impl App {
         
         let editor_area = editor_area.inner(Margin::new(1, 0));
     
-        let text = " > ".to_string() + self.input.value();
+        let text = " > ".to_string() + self.input.get_input_to_render();
 
         let input_block = {
                
@@ -375,11 +378,8 @@ impl App {
         return;
     }
 
-    fn execute(&mut self) {
-        let input = self.input.clone();
-        let argv: Vec<&str> = input
-                                .value()
-                                .trim()
+    fn execute(&mut self, command : String) {
+        let argv: Vec<&str> = command.trim()
                                 .split_whitespace()
                                 .collect();
 
@@ -409,15 +409,10 @@ impl App {
             }
         }
 
-        self.clear_input();
     }
 
     fn clear_output(&mut self) {
         self.output.clear();
-    }
-
-    fn clear_input(&mut self) {
-        self.input.reset();
     }
 
     fn traverse_dirs(&mut self, direction: Direction) {
@@ -477,7 +472,7 @@ impl App {
                 match self.focus {
                   Focus::FILES  => self.traverse_dirs(Direction::DOWN),
                   Focus::SHELL  => {
-                        // TODO: Handle shell history 
+                        self.input.handle_event(&Event::Key(key_event));
                   },
                   Focus::EDITOR =>  {
                         match &mut self.editor {
@@ -496,7 +491,7 @@ impl App {
                 match self.focus {
                     Focus::FILES  => self.traverse_dirs(Direction::UP),
                     Focus::SHELL  => {
-                        // TODO: Handle shell history
+                        self.input.handle_event(&Event::Key(key_event));
                     },
                     Focus::EDITOR => {
                         match &mut self.editor {
@@ -518,7 +513,7 @@ impl App {
                         // TODO: File modifiiers.
                     },
                     Focus::SHELL => {
-                        // TODO: Shell modifiers.
+                        self.input.handle_event(&Event::Key(key_event));
                     },
                     Focus::EDITOR => {
                         match &mut self.editor {
@@ -549,7 +544,7 @@ impl App {
                         self.handle_file_key_press(); 
                     },
                     Focus::SHELL  => {
-                        self.execute();
+                        self.input.handle_event(&Event::Key(key_event));
                     },
                     Focus::EDITOR =>  {
                         match &mut self.editor {
