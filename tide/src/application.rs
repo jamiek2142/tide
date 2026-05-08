@@ -382,7 +382,10 @@ impl App {
         let target_path = self.file_system.get_path_to_object(file_index);
             
         if target_path.is_dir() {
+            // TODO: Replace with expand dir.
             self.change_dir(&target_path);
+        } else {
+            self.focus = Focus::EDITOR;
         }
         return;
     }
