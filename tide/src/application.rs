@@ -152,10 +152,19 @@ impl App {
             .style(Style::default())
             .block(input_block);
 
-        let text: Text = self
-            .output
-            .clone()
-            .join("")
+    
+        let num_lines = { 
+                let height =Into::<usize>::into(shell_output.height) - 1;
+                if height <  self.output.len() {
+                    self.output.len() - height
+                } else {
+                    0
+                }
+            };
+        let last_lines = &self.output[num_lines..];
+
+        let text: Text = last_lines
+                        .join("")
             .into_bytes()
             .into_text()
             .unwrap_or_default();
@@ -388,6 +397,10 @@ impl App {
         }
 
         match argv[0] {
+
+            "clear" => {
+                self.output.clear();
+            },
             "cd" => {
                 if argv.len() > 1 {
                     let path_arg = PathBuf::from(argv[1]);

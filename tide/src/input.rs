@@ -46,24 +46,14 @@ impl Input
     
     fn push_command (&mut self)
     {
-        if self.command_index < self.command_buffer.len()
-        {
-            let command = self.command_buffer[self.command_index].clone();                   
+        let command = self.command_buffer[self.command_index].clone();                   
 
-            self.command_queue.push_back(command);
-        }
+        self.command_queue.push_back(command);
     }
 
     pub fn get_input_to_render (&self) -> &str
-    {
-        if self.command_index >= self.command_buffer.len()
-        {
-            "" 
-        }
-        else 
-        {
-            self.command_buffer[self.command_index].as_str()
-        }
+    {     
+        self.command_buffer[self.command_index].as_str()
     }
     
     pub fn handle_event(&mut self, event : &Event)
@@ -72,14 +62,9 @@ impl Input
         {
             Event::Key(key) => {
                 match key.code {
-                    KeyCode::Char(c) => {
-
-                        if self.command_index < self.command_buffer.len()
-                        {
-                            self.command_buffer[self.command_index].insert(self.cursor_position, c);
-                            self.cursor_position = self.cursor_position + 1;
-                        }
-
+                    KeyCode::Char(c) => {    
+                        self.command_buffer[self.command_index].insert(self.cursor_position, c);
+                        self.cursor_position = self.cursor_position + 1;
                     },
                     KeyCode::Left => {
                         if self.cursor_position > 0
@@ -106,20 +91,24 @@ impl Input
                         }
                     },
                     KeyCode::Enter => {
+                            
+                        if self.command_buffer[self.command_index].is_empty()
+                        {
+                            return;
+                        }
+
                         self.push_command();
-                        
                         self.command_buffer.push("".to_string());
                         self.cursor_position = 0;
                         self.command_index   = self.command_index + 1;
                     },
-                    KeyCode::Backspace => { 
-                        if self.cursor_position > 0
+                    KeyCode::Backspace => {
+                        
+                        if self.cursor_position > 0 
                         {
-                            if self.command_index < self.command_buffer.len()
-                            {
-                                self.command_buffer[self.command_index].remove(self.cursor_position);
-                                self.cursor_position = self.cursor_position - 1;
-                            }
+                            self.command_buffer[self.command_index].remove(self.cursor_position - 1);
+
+                            self.cursor_position = self.cursor_position - 1;
                         }
                     },
                     _ => {
