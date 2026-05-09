@@ -7,12 +7,16 @@
  *****************************************************/
 
 use crate::application::Direction;
+use crate::shell::Shell;
 
 use std::env::current_exe;
 use std::path::{Path, PathBuf};
 use std::slice::Iter;
+use std::sync::Mutex;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use ratatui::widgets::ListState;
+use ratatui::widgets::{List, ListState};
 
 use walkdir::{DirEntry, WalkDir};
 
@@ -42,14 +46,31 @@ pub struct FileEntry {
     path     : PathBuf,  
     basename : String,   
     depth    : usize,    
-    is_dir   : bool,      
+    is_dir   : bool,
+    expanded : bool, 
 }
 
-#[derive(Default, Clone)]
 pub struct FileTree {
     current_path     : PathBuf,
     file_entries     : Vec<FileEntry>,
-    list_state       : ListState
+    list_state       : ListState,
+    shell            : Rc<RefCell<Shell>>
+}
+ 
+/*****************************************************
+ * Implementations
+ *****************************************************/
+
+fn is_dotfile(entry: &DirEntry) -> bool {
+    // TODO: Enable/disable dotfiles.
+
+    for component in entry.path().iter() {
+        if component.to_string_lossy().starts_with(".") {
+            return true;
+        }
+    }
+
+    false
 }
 
 /*****************************************************
@@ -64,15 +85,23 @@ impl FileEntry {
             path: dir_entry.path().to_path_buf(), 
             basename: dir_entry.file_name().to_string_lossy().to_string(), 
             depth: root_depth + dir_entry.depth(), 
-            is_dir: dir_entry.path().is_dir() 
+            is_dir: dir_entry.path().is_dir(),
+            expanded : false
         }
     }
 
+    pub fn is_dir (&self) -> bool {
+        self.is_dir
+    }
+
+    pub fn path (&self) -> String { 
+        "  ".repeat(self.depth - 1) +  &self.basename
+    }
 
 }
 
 impl FileTree {
-   
+  
     fn insert_entries (&mut self, path : &Path, index : Option<usize>, depth : Option<usize>) 
     { 
         let walker = WalkDir::new(path)
@@ -83,13 +112,17 @@ impl FileTree {
             let b_is_dir = b.file_type().is_dir();
 
             match (a_is_dir, b_is_dir) {
-                (true, false) => Ordering::Less,
-                (false, true) => Ordering::Greater,
+                (true, false) => Ordering::Greater,
+                (false, true) => Ordering::Less,
                 _ => a.file_name().cmp(b.file_name()),
             }
         });
 
         for entry in walker.into_iter().filter_map(|e| e.ok()) {
+
+            if is_dotfile(&entry) {
+                continue;
+            }
 
             let index = if let Some(index) = index { index + 1 } else { 0 } ;
             let depth = if let Some(depth) = depth { depth } else { 0 } ;
@@ -97,11 +130,27 @@ impl FileTree {
         }
     }
 
+
+    fn remove_entries (&mut self, index : usize)
+    {   
+       let depth = self.file_entries[index].depth;
+       let mut k = 0;
+       self.file_entries.retain(|entry | {
+            k = k + 1; 
+            (entry.depth <= depth) || (k <= index)
+         }); 
+     }
+
+    pub fn new (shell : Rc<RefCell<Shell>>) -> Self {
+    
+        Self { current_path: PathBuf::default(), file_entries: Vec::new(), list_state: ListState::default(), shell : shell }
+    }
+    
     /** Traverse directories, selecting files/folders. 
      *
-     * \returns True if the currently selected entry is a directory.
+     * \returns A file to open, none if this was a directory. 
      */
-    fn traverse_dirs(&mut self, direction: Direction) -> bool {
+    pub fn traverse_dirs(&mut self, direction: Direction) -> Option<PathBuf> {
         let k = match direction {
             Direction::UP => match self.list_state.selected() {
                 Some(k) => {
@@ -127,33 +176,58 @@ impl FileTree {
 
         self.list_state.select(Some(k));
         
-        self.file_entries[k].is_dir
+        // Return path to file to open
+        if self.file_entries[k].is_dir {
+            None
+        } else {
+            Some(self.file_entries[k].path.clone())
+        }
     }
 
     pub fn change_dir (&mut self, path : PathBuf) 
     {
         self.file_entries.clear();
+        
+        self.file_entries.push(FileEntry { path : PathBuf::new(), basename: "..".to_string(), depth: 1, is_dir: true, expanded: false });
+        self.list_state.select(Some(0));
 
-        self.insert_entries(&path, None, None);
-
+        self.insert_entries(&path, Some(0), None);
         self.current_path = path;
     }
 
-    pub fn expand_dir (&mut self) -> bool {
+    pub fn toggle_dir (&mut self) -> bool {
 
         let Some(index) = self.list_state.selected() else {
             return false;
         };
 
+        if index == 0 {
+           
+            let target_path = { let mut path = self.current_path.clone(); path.push(".."); path }; 
+            let target_path =  std::fs::canonicalize(&target_path).unwrap_or(self.current_path.clone());
+            
+            self.shell.borrow_mut().set_cwd(target_path.clone());
+            self.change_dir(target_path);
+        }
+
         if ! self.file_entries[index].is_dir {
             return false;
         }
 
-        let path = self.file_entries[index].path.clone();
-        let depth  = self.file_entries[index].depth;
+        if self.file_entries[index].expanded {
 
-        self.insert_entries(&path, Some(index), Some(depth));
+            self.file_entries[index].expanded = false;
 
+            self.remove_entries(index);
+        } else {
+
+            let path = self.file_entries[index].path.clone();
+            let depth  = self.file_entries[index].depth;
+
+            self.insert_entries(&path, Some(index), Some(depth));
+
+            self.file_entries[index].expanded = true;
+        }
         true
     }
 
@@ -165,6 +239,11 @@ impl FileTree {
     pub fn get_state (&mut self) -> &mut ListState
     {
        &mut self.list_state
+    }
+
+    pub fn get_current_dir_to_render(& self) -> String
+    {
+        self.current_path.file_name().unwrap_or_default().to_string_lossy().to_string()
     }
 
 }

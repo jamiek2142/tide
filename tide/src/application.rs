@@ -8,15 +8,13 @@
 
 use crate::input::Input;
 use crate::shell::Shell;
-use crate::file_system::{FilePath,FileSystem};
+use crate::file_system::{FilePath,FileSystem, FileTree};
 
 use std::{
-    cmp::Ordering, collections::HashMap, default, env, ffi::OsString, fs, io, path::{Path, PathBuf}, process::Command, thread::sleep, time::Duration, cell::Cell
+    cmp::Ordering, collections::HashMap, default, env, ffi::OsString, fs, io, path::{Path, PathBuf}, process::Command, thread::sleep, time::Duration, cell::RefCell, rc::Rc
 };
 
 use color_eyre::owo_colors::colors::Default;
-
-use walkdir::{DirEntry, WalkDir};
 
 use crossterm::{cursor, event, event::{Event, KeyCode, KeyEvent, KeyEventKind}};
 use crossbeam_channel::{Receiver, Sender, unbounded};
@@ -58,8 +56,8 @@ pub enum Direction {
 }
 pub struct App {
     input : Input,
-    file_system : FileSystem,
-    shell : Shell,
+    file_system : FileTree,
+    shell : Rc<RefCell<Shell>>,
     exit : bool,
     output : Vec<String>,
     rx : Receiver<Vec<u8>>,
@@ -70,11 +68,15 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let (tx, rx) = unbounded::<Vec<u8>>();
+        
+        let shell = Rc::new(RefCell::new(Shell::new(tx)));  
+
+            
 
         Self {
             input: Input::new(),
-            file_system: FileSystem::default(),
-            shell: Shell::new(tx),
+            file_system: FileTree::new(Rc::clone(&shell)),
+            shell: shell,
             exit: bool::default(),
             output: Vec::new(),
             rx: rx,
@@ -85,7 +87,9 @@ impl App {
     }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
-        self.update_file_system();
+      
+        let target_path = self.shell.borrow().cwd_as_path();
+        self.change_dir(&target_path);
 
         while !self.exit {
             while let Ok(bytes) = self.rx.try_recv() {
@@ -189,9 +193,8 @@ impl App {
             .style(Style::default())
             .block(output_block);
 
-        let files = self.file_system.clone();
-        let items: Vec<ListItem> = files
-            .get_paths_to_render()
+        let items: Vec<ListItem> = self.file_system
+            .iter()
             .map(|k| {
                 let style = if k.is_dir() {
                     Style::default()
@@ -221,7 +224,7 @@ impl App {
 
         let list = List::new(items)
             .block(
-                files_block.title(files.get_current_dir_to_render()),
+                files_block.title(self.file_system.get_current_dir_to_render()),
             )
             .highlight_style(
                 Style::default()
@@ -276,87 +279,15 @@ impl App {
         Ok(())
     }
 
-    fn is_dotfile(&self, entry: &DirEntry) -> bool {
-        // TODO: Enable/disable dotfiles.
-
-        for component in entry.path().iter() {
-            if component.to_string_lossy().starts_with(".") {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    fn update_file_system(&mut self) {
-        self.file_system.clear();
-        self.file_system.get_state().select(Some(0));
-
-        let walker = WalkDir::new(self.shell.get_cwd()).sort_by(|a, b| {
-            let a_is_dir = a.file_type().is_dir();
-            let b_is_dir = b.file_type().is_dir();
-
-            match (a_is_dir, b_is_dir) {
-                (true, false) => Ordering::Less,
-                (false, true) => Ordering::Greater,
-                _ => a.file_name().cmp(b.file_name()),
-            }
-        });
-
-        let mut path_to_upper_dir = self.shell.cwd_as_path().clone();
-
-        self.file_system.set_current_dir_to_render(&self.shell.get_cwd().to_string_lossy());
-
-        path_to_upper_dir.push("..");
-
-        let parent_dir = self
-            .shell
-            .get_cwd()
-            .parent()
-            .map_or(String::default(), |x| {
-                x.file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string()
-            });
-
-        // TODO: Fix for root paths.
-        self.file_system.set_current_dir_to_render(&("../".to_string()
-            + &parent_dir
-            + "/"
-            + &self
-                .shell
-                .get_cwd()
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()));
-
-        self.file_system.push_path_to_object(path_to_upper_dir);
-        self.file_system.push_path_to_render("..", true);
-
-        for entry in walker.into_iter().filter_map(|e| e.ok()) {
-            let depth = entry.depth();
-
-            // TODO: Recursive depth limit set by left right keys
-            if (depth > 1) || (depth == 0) || self.is_dotfile(&entry) {
-                continue;
-            }
-
-            let prefix = "  ".repeat(depth - 1);
-
-            self.file_system.push_path_to_render(
-                &(prefix + &entry.file_name().to_string_lossy()),
-                entry.path().is_dir());
-
-            self.file_system.push_path_to_object(entry.into_path());
-        }
-    }
-
     fn change_dir(&mut self, target_path: &PathBuf) {
+       
         // TODO: Handle invalid paths. 
-        self.shell.set_cwd(
-            std::fs::canonicalize(&target_path).unwrap_or(self.shell.cwd_as_path()));
-        self.update_file_system();
+        
+        let target_path = std::fs::canonicalize(&target_path).unwrap_or(self.shell.borrow_mut().cwd_as_path());
+
+        self.shell.borrow_mut().set_cwd(target_path.clone());
+
+        self.file_system.change_dir(target_path);
     }
 
     fn open_file(&mut self, target_path: &PathBuf) {
@@ -373,21 +304,11 @@ impl App {
         self.editor    = Some(editor);
     }
 
-    fn handle_file_key_press (&mut self) 
-    {
-        let Some(file_index) = self.file_system.get_state().selected() else {
-            return;
-        };
+    fn handle_file_key_press (&mut self) {
 
-        let target_path = self.file_system.get_path_to_object(file_index);
-            
-        if target_path.is_dir() {
-            // TODO: Replace with expand dir.
-            self.change_dir(&target_path);
-        } else {
+        if ! self.file_system.toggle_dir() {
             self.focus = Focus::EDITOR;
         }
-        return;
     }
 
     fn execute(&mut self, command : String) {
@@ -411,7 +332,7 @@ impl App {
                     let target_path = if path_arg.is_absolute() {
                         path_arg
                     } else {
-                        self.shell.get_cwd().join(path_arg)
+                        self.shell.borrow_mut().get_cwd().join(path_arg)
                     };
                     if target_path.is_dir() {
                         self.change_dir(&target_path);
@@ -421,7 +342,7 @@ impl App {
             }
 
             _ => {
-                self.shell.send_cmd(argv);
+                self.shell.borrow_mut().send_cmd(argv);
             }
         }
 
@@ -429,38 +350,6 @@ impl App {
 
     fn clear_output(&mut self) {
         self.output.clear();
-    }
-
-    fn traverse_dirs(&mut self, direction: Direction) {
-        let k = match direction {
-            Direction::UP => match self.file_system.get_state().selected() {
-                Some(k) => {
-                    if k <= 0 {
-                        self.file_system.len() - 1
-                    } else {
-                        k - 1
-                    }
-                }
-                None => 0,
-            },
-            Direction::DOWN => match self.file_system.get_state().selected() {
-                Some(k) => {
-                    if k >= self.file_system.len() - 1 {
-                        0
-                    } else {
-                        k + 1
-                    }
-                }
-                None => 0,
-            } 
-        };
-
-        self.file_system.get_state().select(Some(k));
-        
-        if self.file_system.get_path_to_object(k).is_file()
-        {
-            self.open_file(&self.file_system.get_path_to_object(k));   
-        }
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent, editor_area : &Rect) {
@@ -486,7 +375,11 @@ impl App {
             },
             KeyCode::Down  => {
                 match self.focus {
-                  Focus::FILES  => self.traverse_dirs(Direction::DOWN),
+                  Focus::FILES  => {
+                      if let Some(file) = self.file_system.traverse_dirs(Direction::DOWN) {
+                        self.open_file(&file);
+                      }
+                  },
                   Focus::SHELL  => {
                         self.input.handle_event(&Event::Key(key_event));
                   },
@@ -505,7 +398,11 @@ impl App {
             KeyCode::Up    => {
                 
                 match self.focus {
-                    Focus::FILES  => self.traverse_dirs(Direction::UP),
+                    Focus::FILES  => {
+                        if let Some(file) = self.file_system.traverse_dirs(Direction::UP) {
+                           self.open_file(&file);
+                      }
+                    },
                     Focus::SHELL  => {
                         self.input.handle_event(&Event::Key(key_event));
                     },
