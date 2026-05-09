@@ -41,9 +41,8 @@ fn main() -> io::Result<()> {
 
     let mut terminal = ratatui::init();
     let result = App::new().run(&mut terminal);
-    
-    
-
+     
+    crossterm::execute!(stdout(), SetCursorStyle::DefaultUserShape);
     crossterm::execute!(stdout(), DisableMouseCapture);
 
     ratatui::restore();

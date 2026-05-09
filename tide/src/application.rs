@@ -10,12 +10,28 @@
  * Crates
  *****************************************************/
 
-use crate::input::Input;
+use crate::{file_system, input::Input};
 use crate::shell::Shell;
-use crate::file_system::{FilePath,FileSystem, FileTree};
+use crate::file_system::FileTree;
 
+use std::env::current_exe;
 use std::{
-    cmp::Ordering, collections::HashMap, default, env, ffi::OsString, fs, io, path::{Path, PathBuf}, process::Command, thread::sleep, time::Duration, cell::RefCell, rc::Rc
+    cmp::Ordering, 
+    collections::HashMap, 
+    default, 
+    env, 
+    ffi::OsString, 
+    fs, 
+    io, 
+    path::{
+        Path,
+        PathBuf
+    }, 
+    process::Command, 
+    thread::sleep, 
+    time::Duration, 
+    cell::RefCell, 
+    rc::Rc
 };
 
 use color_eyre::owo_colors::colors::Default;
@@ -226,9 +242,49 @@ impl App {
                 }
             }; 
 
+            
+        let mut current_dir_path = self.file_system.get_current_dir_to_render();
+        let avaiable_space = if file_area.width > 15 { 
+                15 
+            } else { 
+                file_area.width 
+            };
+        let mut required_space = 0; 
+        let mut num_elems = 0;
+
+        for elem in current_dir_path.iter().rev() {
+            let num_chars : u16 = elem.to_str().unwrap().chars().count().try_into().unwrap();
+
+            required_space = required_space + num_chars;
+        
+            if required_space > avaiable_space 
+            {
+                break;
+            }
+            
+            num_elems = num_elems + 1;
+        };
+
+        let current_dir_path = self.file_system.get_current_dir_to_render();
+        let num_components    = current_dir_path.components().count();
+            
+        let dir_path_to_render = if num_elems < num_components {
+                let dir_path_to_render : PathBuf = current_dir_path.components().skip(num_components - num_elems - 1).collect();
+
+                "../".to_string() + &dir_path_to_render.to_string_lossy()
+            } else {
+                current_dir_path.to_string_lossy().to_string()
+            };
+
         let list = List::new(items)
             .block(
-                files_block.title(self.file_system.get_current_dir_to_render()),
+                files_block
+                    .title(dir_path_to_render)
+                    .title_style(
+                        Style::default()
+                            .fg(Color::LightMagenta)
+                            .add_modifier(Modifier::BOLD)
+                        ),
             )
             .highlight_style(
                 Style::default()
@@ -307,7 +363,10 @@ impl App {
     fn open_file(&mut self, target_path: &PathBuf) {
         
         let content = if target_path.exists() {
-            fs::read_to_string(target_path).unwrap() 
+            match fs::read_to_string(target_path) {
+                Ok(ok)  => ok,
+                Err(err) => return
+            }
         } else {
             return;
         };
