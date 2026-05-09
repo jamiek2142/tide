@@ -52,7 +52,7 @@ enum Focus {
     EDITOR
 }
 
-enum Direction {
+pub enum Direction {
     UP,
     DOWN,
 }
