@@ -56,6 +56,11 @@ impl Input
         self.command_buffer[self.command_index].as_str()
     }
     
+    pub fn get_cursor_position (&self) -> u16
+    {
+        self.cursor_position.try_into().unwrap_or_default() 
+    }
+
     pub fn handle_event(&mut self, event : &Event)
     {
         match event
@@ -73,10 +78,13 @@ impl Input
                         }
                     }
                     KeyCode::Right => {
-                        if self.cursor_position < (self.command_buffer[self.command_index].len() - 1)
+                        if self.command_buffer[self.command_index].len() > 0
                         {
-                            self.cursor_position = self.cursor_position + 1;
-                        }   
+                            if self.cursor_position < (self.command_buffer[self.command_index].len() - 1)
+                            {
+                                self.cursor_position = self.cursor_position + 1;
+                            }
+                        }
                     },
                     KeyCode::Up => {
                         if self.command_index > 0
@@ -85,9 +93,12 @@ impl Input
                         }
                     },
                     KeyCode::Down => {
-                        if self.command_index < (self.command_buffer.len() - 1)
+                        if self.command_buffer.len() > 0
                         {
-                            self.command_index = self.command_index + 1;
+                            if self.command_index < (self.command_buffer.len() - 1)
+                            {
+                                self.command_index = self.command_index + 1;
+                            }
                         }
                     },
                     KeyCode::Enter => {

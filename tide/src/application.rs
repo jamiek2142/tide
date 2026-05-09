@@ -2,6 +2,10 @@
  * Copyright 2026, Tide Project
  *****************************************************/
 
+/**
+ * This file implements the main application logic.
+ */
+
 /*****************************************************
  * Crates
  *****************************************************/
@@ -233,10 +237,20 @@ impl App {
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol(">> ");
-      
+
+     
         frame.render_stateful_widget(list, file_area, &mut self.file_system.get_state());
         frame.render_widget(input, shell_input);
 
+        if self.focus == Focus::SHELL { 
+
+           let cursor_offset_x = 4 + shell_input.x +  self.input.get_cursor_position();
+           let cursor_offset_y = shell_input.y; 
+
+           frame.set_cursor_position((cursor_offset_x, cursor_offset_y));
+        
+        }
+ 
         // Render output or text editor
         match &self.editor {
             Some (editor) => {

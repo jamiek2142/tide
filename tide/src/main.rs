@@ -18,7 +18,7 @@ mod application;
  * Crates
  *****************************************************/
 
-use crossterm::event::{EnableMouseCapture, DisableMouseCapture};
+use crossterm::{cursor::SetCursorStyle, event::{DisableMouseCapture, EnableMouseCapture}};
 
 use crate::application::App;
 
@@ -37,7 +37,8 @@ fn main() -> io::Result<()> {
         default_hook(panic_info);
     }));
     crossterm::execute!(stdout(), EnableMouseCapture);
-    
+    crossterm::execute!(stdout(), SetCursorStyle::BlinkingBar);
+
     let mut terminal = ratatui::init();
     let result = App::new().run(&mut terminal);
     
