@@ -80,7 +80,7 @@ impl Input
                     KeyCode::Right => {
                         if self.command_buffer[self.command_index].len() > 0
                         {
-                            if self.cursor_position < (self.command_buffer[self.command_index].len() - 1)
+                            if self.cursor_position < self.command_buffer[self.command_index].len()
                             {
                                 self.cursor_position = self.cursor_position + 1;
                             }

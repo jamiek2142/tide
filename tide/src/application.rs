@@ -141,9 +141,9 @@ impl App {
 
         while !self.exit {
             while let Ok(bytes) = self.rx.try_recv() {
-                let text = String::from_utf8_lossy(&bytes);
-
-                self.output.push(text.to_string());
+                let text = String::from_utf8_lossy(&bytes).to_string();
+                let mut text = text.lines().map(String::from).collect();
+                self.output.append(&mut text);
             }
 
             terminal.draw(|frame| self.draw(frame))?;
@@ -206,17 +206,17 @@ impl App {
 
     
         let num_lines = { 
-                let height =Into::<usize>::into(shell_output.height) - 1;
-                if height <  self.output.len() {
-                    self.output.len() - height
-                } else {
-                    0
-                }
+                self.output
+                    .len()
+                    .saturating_sub(
+                        (shell_output.height as usize)
+                            .saturating_sub(1)
+                        )
             };
         let last_lines = &self.output[num_lines..];
 
         let text: Text = last_lines
-                        .join("")
+                        .join("\n")
             .into_bytes()
             .into_text()
             .unwrap_or_default();
@@ -566,7 +566,13 @@ impl App {
             KeyCode::Tab => {
                 
                 match self.focus {
-                    Focus::FILES     => self.focus = Focus::EDITOR(EditorFocus::MAIN), 
+                    Focus::FILES     => {
+                        if let Some(editor) = &self.editor {
+                            self.focus = Focus::EDITOR(EditorFocus::MAIN);
+                        } else {
+                            self.focus = Focus::SHELL;
+                        };
+                    }, 
                     Focus::EDITOR(_) => self.focus = Focus::SHELL,
                     Focus::SHELL     => self.focus = Focus::FILES,
                 }

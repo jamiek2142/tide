@@ -70,7 +70,6 @@ impl Shell {
         // TODO: Environment variables.
 
         let Ok(mut _child) = pair.slave.spawn_command(cmd) else {
-            // TODO: Optional clear input.
             return;
         };
         let mut reader = pair.master.try_clone_reader().unwrap();
@@ -87,7 +86,6 @@ impl Shell {
                 let _ = tx.send(buffer[..n].to_vec());
             }
         });
-
       }
 
 }
