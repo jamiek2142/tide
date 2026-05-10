@@ -10,6 +10,7 @@
  * Crates
  *****************************************************/
 
+use crate::popup_menu::{self, PopupMenu};
 use crate::{file_system, input::Input};
 use crate::shell::Shell;
 use crate::file_system::FileTree;
@@ -48,7 +49,7 @@ use ratatui::{
     style::{Color, Modifier, Style, Stylize},
     symbols::border,
     text::{Line, Text},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Widget},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Widget},
     symbols::merge::MergeStrategy
 };
 
@@ -63,12 +64,23 @@ use ratatui_code_editor::{
 
 use ansi_to_tui::IntoText as _;
 
+/*****************************************************
+ * Types
+ *****************************************************/
+
+#[derive(PartialEq)]
+enum EditorFocus {
+    MAIN,
+    EXIT
+}
+
 #[derive(PartialEq)]
 enum Focus {
     FILES,
     SHELL,
-    EDITOR
+    EDITOR(EditorFocus)
 }
+
 
 pub enum Direction {
     UP,
@@ -83,15 +95,30 @@ pub struct App {
     rx : Receiver<Vec<u8>>,
     focus : Focus,
     editor : Option<Editor>,
-    open_file : Option<PathBuf>
+    open_file : Option<PathBuf>,
+    popup_menu : Option<PopupMenu> 
 }
+
+/*****************************************************
+ * Types
+ *****************************************************/
+
+impl From<KeyCode> for Direction {
+
+    fn from(value: KeyCode) -> Self {
+       match value {
+         KeyCode::Up => Direction::UP,
+         _ => Direction::DOWN
+       }
+    }
+
+}
+
 impl App {
     pub fn new() -> Self {
         let (tx, rx) = unbounded::<Vec<u8>>();
         
-        let shell = Rc::new(RefCell::new(Shell::new(tx)));  
-
-            
+        let shell = Rc::new(RefCell::new(Shell::new(tx)));   
 
         Self {
             input: Input::new(),
@@ -102,7 +129,8 @@ impl App {
             rx: rx,
             focus: Focus::FILES,
             editor: None,
-            open_file : None
+            open_file : None,
+            popup_menu : None
        }
     }
 
@@ -293,8 +321,8 @@ impl App {
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol(">> ");
-
-     
+ 
+        // Render the fils and shell input. Set the cursor position if the shell is active focus. 
         frame.render_stateful_widget(list, file_area, &mut self.file_system.get_state());
         frame.render_widget(input, shell_input);
 
@@ -307,7 +335,7 @@ impl App {
         
         }
  
-        // Render output or text editor
+        // Render text editor and shell output
         match &self.editor {
             Some (editor) => {
                 frame.render_widget(editor, editor_area);
@@ -322,7 +350,44 @@ impl App {
             }
         }
         
-        frame.render_widget(output, shell_output);
+        frame.render_widget(output, shell_output); 
+
+        // Render the popup menu if set.
+        if let Some(popup) = &mut self.popup_menu {
+
+            let popup_area_width = editor_area.width / 4;
+            let popup_area_height = 10;
+
+            let popup_area_x = editor_area.x + (editor_area.width - popup_area_width) / 2 ;
+            let popup_area_y = editor_area.y + (editor_area.height - popup_area_height) / 2 ;
+
+            let popup_area = Rect::new(popup_area_x, popup_area_y, popup_area_width, popup_area_height);
+            let popup_block = Block::default().borders(Borders::ALL);
+
+
+            let popup_items = popup.get_list_items();
+            let popup_items : Vec<ListItem> = popup_items
+                .iter()
+                .map(|k| {
+                    ListItem::new(k.as_str())
+                })
+                .collect();
+
+            let popup_list = List::new(popup_items)
+                .block(popup_block)
+                .highlight_style(
+                    Style::default()
+                        .bg(Color::Yellow)
+                        .fg(Color::Black)
+                    .   add_modifier(Modifier::BOLD),
+                )
+                .highlight_symbol(">> ");
+
+            frame.render_widget(Clear, popup_area);
+
+            frame.render_stateful_widget(popup_list, popup_area, popup.get_state());
+        }
+
 
         self.handle_events(&editor_area).unwrap();
     }
@@ -380,7 +445,7 @@ impl App {
     fn handle_file_key_press (&mut self) {
 
         if ! self.file_system.toggle_dir() {
-            self.focus = Focus::EDITOR;
+            self.focus = Focus::EDITOR(EditorFocus::MAIN);
         }
     }
 
@@ -428,69 +493,53 @@ impl App {
     fn handle_key_event(&mut self, key_event: KeyEvent, editor_area : &Rect) {
         match key_event.code {
             KeyCode::Esc   => {
-                match self.focus {
+                match &self.focus {
                     Focus::SHELL |
                     Focus::FILES  => self.exit(),
-                    Focus::EDITOR => {
+                    Focus::EDITOR(editor_focus) => {
 
-                        let content = self.editor
-                                        .as_ref()
-                                        .unwrap()
-                                        .get_content();
+                        match editor_focus {
 
+                            EditorFocus::MAIN => {
+                                self.popup_menu = Some(PopupMenu::default().add_field("Save?").add_field("Exit?"));
+                                self.focus      = Focus::EDITOR(EditorFocus::EXIT);
+                            },
 
-                        fs::write(self.open_file.as_ref().unwrap(), content);
+                            EditorFocus::EXIT => {   
 
-                        // self.editor = None;
-                        self.focus = Focus::SHELL;
+                                self.popup_menu = None;
+                                self.focus      = Focus::EDITOR(EditorFocus::MAIN); 
+                            }
+                        }
                     },
                 }
             },
-            KeyCode::Down  => {
-                match self.focus {
+            KeyCode::Down | KeyCode::Up  => {
+                match &self.focus {
                   Focus::FILES  => {
-                      if let Some(file) = self.file_system.traverse_dirs(Direction::DOWN) {
+                      if let Some(file) = self.file_system.traverse_dirs(Direction::from(key_event.code)) {
                         self.open_file(&file);
                       }
                   },
                   Focus::SHELL  => {
                         self.input.handle_event(&Event::Key(key_event));
                   },
-                  Focus::EDITOR =>  {
-                        match &mut self.editor {
-                            Some(editor) => { 
-                                editor.input(key_event, editor_area);
+                  Focus::EDITOR(editor_focus) => {
+                        match editor_focus {
+                            EditorFocus::MAIN => {
+                                if let Some(editor) = &mut self.editor {
+                                    editor.input(key_event, editor_area);
+                                };
                             },
-                            None => {
-                                /* Nothing to do */
-                            },
-                        }
-                    },
-                }
-            },
-            KeyCode::Up    => {
-                
-                match self.focus {
-                    Focus::FILES  => {
-                        if let Some(file) = self.file_system.traverse_dirs(Direction::UP) {
-                           self.open_file(&file);
-                      }
-                    },
-                    Focus::SHELL  => {
-                        self.input.handle_event(&Event::Key(key_event));
-                    },
-                    Focus::EDITOR => {
-                        match &mut self.editor {
-                            Some(editor) => { 
-                                editor.input(key_event, editor_area);
-                            },
-                            None => {
-                                /* Nothing to do */
+                            EditorFocus::EXIT => {
+                                if let Some(popup) = &mut self.popup_menu {
+                                    popup.traverse_items(Direction::from(key_event.code));
+                                };
                             },
                         }
                     },
                 }
-            },
+            }, 
             
             KeyCode::Modifier(modifiier) => {
 
@@ -501,7 +550,7 @@ impl App {
                     Focus::SHELL => {
                         self.input.handle_event(&Event::Key(key_event));
                     },
-                    Focus::EDITOR => {
+                    Focus::EDITOR(_) => {
                         match &mut self.editor {
                             Some(editor) => {
                                 editor.input(key_event, editor_area);
@@ -517,28 +566,55 @@ impl App {
             KeyCode::Tab => {
                 
                 match self.focus {
-                    Focus::FILES  => self.focus = Focus::EDITOR, 
-                    Focus::EDITOR => self.focus = Focus::SHELL,
-                    Focus::SHELL  => self.focus = Focus::FILES,
+                    Focus::FILES     => self.focus = Focus::EDITOR(EditorFocus::MAIN), 
+                    Focus::EDITOR(_) => self.focus = Focus::SHELL,
+                    Focus::SHELL     => self.focus = Focus::FILES,
                 }
             },
 
             KeyCode::Enter => {
                 
-                match self.focus {
+                match &self.focus {
                     Focus::FILES  => {
                         self.handle_file_key_press(); 
                     },
                     Focus::SHELL  => {
                         self.input.handle_event(&Event::Key(key_event));
                     },
-                    Focus::EDITOR =>  {
-                        match &mut self.editor {
-                            Some(editor) => { 
-                                editor.input(key_event, editor_area);
+                    Focus::EDITOR(editor_focus) => {
+                        match editor_focus {
+                            EditorFocus::MAIN => {
+                                if let Some(editor) = &mut self.editor {
+                                    editor.input(key_event, editor_area);
+                                };
                             },
-                            None => {
-                                /* Nothing to do */
+                            EditorFocus::EXIT => { 
+                                let mut close_menu = false;
+                                if let Some(popup_menu) = &mut self.popup_menu {
+
+                                    if popup_menu.selected("Save?") {
+
+                                        let content = self.editor
+                                                        .as_ref()
+                                                        .unwrap()
+                                                        .get_content();
+
+                                        fs::write(self.open_file.as_ref().unwrap(), content);
+                                    
+                                    }
+
+                                    if popup_menu.selected("Exit?") {
+                                        self.editor = None;
+
+                                        self.focus  = Focus::FILES;
+
+                                        close_menu  = true;     
+                                    }
+                                };
+
+                                if close_menu {
+                                    self.popup_menu = None;
+                                }
                             },
                         }
                     },
@@ -552,7 +628,7 @@ impl App {
                     Focus::SHELL => {
                         self.input.handle_event(&Event::Key(key_event));
                     },
-                    Focus::EDITOR =>  {
+                    Focus::EDITOR(_) =>  {
                         match &mut self.editor {
                             Some(editor) => { 
                                 editor.input(key_event,editor_area);
