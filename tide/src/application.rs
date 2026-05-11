@@ -30,18 +30,44 @@ use std::{
     }, 
     process::Command, 
     thread::sleep, 
-    time::Duration, 
+    time::{
+        Duration,
+        Instant
+    }, 
     cell::RefCell, 
     rc::Rc
 };
 
 use color_eyre::owo_colors::colors::Default;
 
-use crossterm::{cursor, event, event::{Event, KeyCode, KeyEvent, KeyEventKind}};
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use crossterm::event::MouseEventKind;
+use crossterm::{
+    cursor, 
+    event, 
+    event::{
+        Event, 
+        KeyCode, 
+        KeyEvent, 
+        KeyEventKind, 
+        MouseEvent
+    }
+};
 
-use portable_pty::{CommandBuilder, NativePtySystem, PtyPair, PtySize, PtySystem};
+use crossbeam_channel::{
+    Receiver, 
+    Sender, 
+    unbounded
+};
 
+use portable_pty::{
+    CommandBuilder, 
+    NativePtySystem, 
+    PtyPair, 
+    PtySize, 
+    PtySystem
+};
+
+use ratatui::layout;
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
@@ -53,6 +79,7 @@ use ratatui::{
     symbols::merge::MergeStrategy
 };
 
+use ratatui_code_editor::editor;
 use ratatui_textarea::{
     TextArea
 };
@@ -86,6 +113,7 @@ pub enum Direction {
     UP,
     DOWN,
 }
+
 pub struct App {
     input : Input,
     file_system : FileTree,
@@ -96,11 +124,22 @@ pub struct App {
     focus : Focus,
     editor : Option<Editor>,
     open_file : Option<PathBuf>,
-    popup_menu : Option<PopupMenu> 
+    popup_menu : Option<PopupMenu>,
+    last_scroll : Instant
 }
 
 /*****************************************************
- * Types
+ * Local Functions 
+ *****************************************************/
+
+fn is_in_hitbox ((x,y) : (u16, u16),  rect : &Rect) -> bool
+{
+    (x > rect.x) && (x < (rect.x + rect.width )) &&
+    (y > rect.y) && (y < (rect.y + rect.height))
+}
+
+/*****************************************************
+ * Trait Implementations 
  *****************************************************/
 
 impl From<KeyCode> for Direction {
@@ -111,8 +150,22 @@ impl From<KeyCode> for Direction {
          _ => Direction::DOWN
        }
     }
-
 }
+
+impl From<MouseEventKind> for Direction {
+
+    fn from(value: MouseEventKind) -> Self {
+       match value {
+         MouseEventKind::ScrollUp => Direction::UP,
+         _ => Direction::DOWN
+       }
+    }
+}
+
+/*****************************************************
+ * Implementations
+ *****************************************************/
+
 
 impl App {
     pub fn new() -> Self {
@@ -130,7 +183,8 @@ impl App {
             focus: Focus::FILES,
             editor: None,
             open_file : None,
-            popup_menu : None
+            popup_menu : None,
+            last_scroll : Instant::now()
        }
     }
 
@@ -271,7 +325,7 @@ impl App {
             }; 
 
             
-        let mut current_dir_path = self.file_system.get_current_dir_to_render();
+        let current_dir_path = self.file_system.get_current_dir_to_render();
         let avaiable_space = if file_area.width > 15 { 
                 15 
             } else { 
@@ -387,26 +441,22 @@ impl App {
 
             frame.render_stateful_widget(popup_list, popup_area, popup.get_state());
         }
-
-
-        self.handle_events(&editor_area).unwrap();
+    
+        // Create a rect which maps to the entire shell area for handling mouse events.
+        let shell_area = Rect::new(shell_output.x, shell_output.y, shell_output.width, shell_output.height + shell_input.height);
+        
+        // Handle events after drawing the layout so we can use the areas drawn as part of the app.
+        self.handle_events(&editor_area, &shell_area, &file_area).unwrap();
     }
 
-    fn handle_events(&mut self, editor_area : &Rect) -> io::Result<()> {
+    fn handle_events(&mut self, editor_area : &Rect, shell_area : &Rect, file_area : &Rect) -> io::Result<()> {
         if event::poll(Duration::from_millis(10))? {
             match event::read()? {
                 Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                     self.handle_key_event(key_event, editor_area)
                 }
                 Event::Mouse(mouse_event) => {
-                    match &mut self.editor {
-                        Some(editor) => {                        
-                            editor.mouse(mouse_event, editor_area);
-                        },
-                        None => {
-                            /* Nothing to do. */
-                        },
-                    }
+                    self.handle_mouse_event(mouse_event, editor_area, shell_area, file_area); 
                 }
                 _ => { /* Nothing to do. */ }
             }
@@ -430,7 +480,7 @@ impl App {
         let content = if target_path.exists() {
             match fs::read_to_string(target_path) {
                 Ok(ok)  => ok,
-                Err(err) => return
+                Err(_err) => return
             }
         } else {
             return;
@@ -485,11 +535,68 @@ impl App {
         }
 
     }
+    
+    fn handle_mouse_event(&mut self, mouse_event : MouseEvent, editor_area : &Rect, shell_area : &Rect, file_area : &Rect) {
+        
+        // First handle mouse event clicks. Left mouse sets focus. 
+        if let MouseEventKind::Down(mouse_button) = mouse_event.kind { 
+            if mouse_button.is_left() {
+                
+                let x = mouse_event.row;
+                let y = mouse_event.column;
 
-    fn clear_output(&mut self) {
-        self.output.clear();
+                if is_in_hitbox((x, y), editor_area) {
+                    if let Some(_editor) = &self.editor {
+                        self.focus = Focus::EDITOR(EditorFocus::MAIN);
+                    };
+                } else if is_in_hitbox((x, y), shell_area) {
+                    self.focus = Focus::SHELL;
+                } else if is_in_hitbox((x, y), file_area) {
+                    self.focus = Focus::FILES;
+                }   
+                return;
+            }
+        };  
+
+        match &self.focus {
+            Focus::SHELL => {
+                
+                
+            },
+            Focus::FILES => {
+
+                match mouse_event.kind {
+                    MouseEventKind::ScrollUp | 
+                    MouseEventKind::ScrollDown if self.last_scroll.elapsed() > Duration::from_millis(250) => {
+                        if let Some(file) = self.file_system.traverse_dirs(Direction::from(mouse_event.kind)) {
+                            self.open_file(&file);
+                        };
+
+                        self.last_scroll = Instant::now();
+                    },
+                    _ => {
+                        /* Nothing to do. */
+                    },
+
+                }
+
+            },
+            Focus::EDITOR(editor_focus) => {
+                match editor_focus {
+                    EditorFocus::MAIN => {
+                        if let Some(editor) = &mut self.editor {
+                            editor.mouse(mouse_event, editor_area);
+                        };
+                    },
+                    EditorFocus::EXIT => {
+
+                    },
+                }
+            }
+
+        }
     }
-
+    
     fn handle_key_event(&mut self, key_event: KeyEvent, editor_area : &Rect) {
         match key_event.code {
             KeyCode::Esc   => {
