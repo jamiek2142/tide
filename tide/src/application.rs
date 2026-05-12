@@ -523,11 +523,13 @@ impl App {
         
         // First handle mouse event clicks. Left mouse sets focus. 
         if let MouseEventKind::Down(mouse_button) = mouse_event.kind { 
-            if mouse_button.is_left() {
-                
-                let x = mouse_event.column;
-                let y = mouse_event.row;
+            
+            const OFFSET_TO_FIRST_ENTRY : u16 = 1;
 
+            let x = mouse_event.column;
+            let y = mouse_event.row;
+
+            if mouse_button.is_left() {
                 if is_in_hitbox((x, y), editor_area) {
                     if let Some(_editor) = &self.editor {
                         self.focus = Focus::EDITOR(EditorFocus::MAIN);
@@ -537,13 +539,22 @@ impl App {
                 } else if is_in_hitbox((x, y), file_area) {
                     self.focus = Focus::FILES;
  
-                    let k = (y - 1) as usize;
+                    let k = (y - OFFSET_TO_FIRST_ENTRY) as usize;
 
                     if let Some(file) = self.file_system.select_entry(k) {
                         self.open_file(&file);
                     }
                 }   
-                return;
+            }
+            if mouse_button.is_right() {
+            
+                if is_in_hitbox((x,y), file_area) {
+ 
+                    let k = (y - OFFSET_TO_FIRST_ENTRY) as usize;
+
+                    self.file_system.change_dir_at_index(k);
+                }
+
             }
         };  
 

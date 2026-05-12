@@ -185,6 +185,18 @@ impl FileTree {
         }
     }
 
+
+    pub fn change_dir_at_index (&mut self, k : usize) {
+
+        if k < self.file_entries.len() {
+
+            if self.file_entries[k].is_dir {
+                self.change_dir(self.file_entries[k].path.clone());
+            }
+        }
+            
+    }
+
     pub fn change_dir (&mut self, path : PathBuf) {
         self.file_entries.clear();
         
