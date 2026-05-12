@@ -187,8 +187,7 @@ impl FileTree {
         }
     }
 
-    pub fn change_dir (&mut self, path : PathBuf) 
-    {
+    pub fn change_dir (&mut self, path : PathBuf) {
         self.file_entries.clear();
         
         self.file_entries.push(FileEntry { path : PathBuf::new(), basename: "..".to_string(), depth: 1, is_dir: true, expanded: false });
@@ -204,6 +203,7 @@ impl FileTree {
             return false;
         };
 
+        // Handle special case for index 0 to move up a directory. 
         if index == 0 {
            
             let target_path = { let mut path = self.current_path.clone(); path.push(".."); path }; 
@@ -223,7 +223,6 @@ impl FileTree {
 
             self.remove_entries(index);
         } else {
-
             let path = self.file_entries[index].path.clone();
             let depth  = self.file_entries[index].depth;
 
