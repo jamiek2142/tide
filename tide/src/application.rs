@@ -10,27 +10,18 @@
  * Crates
  *****************************************************/
 
-use crate::popup_menu::{self, PopupMenu};
-use crate::{file_system, input::Input};
+use crate::popup_menu::PopupMenu;
+use crate::input::Input;
 use crate::shell::Shell;
 use crate::file_system::FileTree;
 
-use std::env::current_exe;
-use std::fmt::format;
-use std::{
-    cmp::Ordering, 
+use std::{ 
     collections::HashMap, 
-    default, 
-    env, 
-    ffi::OsString, 
     fs, 
     io, 
     path::{
-        Path,
         PathBuf
-    }, 
-    process::Command, 
-    thread::sleep, 
+    },  
     time::{
         Duration,
         Instant
@@ -39,50 +30,30 @@ use std::{
     rc::Rc
 };
 
-use color_eyre::owo_colors::colors::Default;
-
-use crossterm::event::MouseEventKind;
 use crossterm::{
-    cursor, 
-    event, 
     event::{
+        self,
         Event, 
         KeyCode, 
         KeyEvent, 
         KeyEventKind, 
-        MouseEvent
+        MouseEvent,
+        MouseEventKind
     }
 };
 
 use crossbeam_channel::{
     Receiver, 
-    Sender, 
     unbounded
 };
 
-use portable_pty::{
-    CommandBuilder, 
-    NativePtySystem, 
-    PtyPair, 
-    PtySize, 
-    PtySystem
-};
-
-use ratatui::layout;
 use ratatui::{
     DefaultTerminal, Frame,
-    buffer::Buffer,
     layout::{Margin, Constraint, Layout, Position, Rect, Spacing},
-    style::{Color, Modifier, Style, Stylize},
-    symbols::border,
-    text::{Line, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Widget},
+    style::{Color, Modifier, Style},
+    text::Text,
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
     symbols::merge::MergeStrategy
-};
-
-use ratatui_code_editor::editor;
-use ratatui_textarea::{
-    TextArea
 };
 
 use ratatui_code_editor::{
@@ -477,7 +448,10 @@ impl App {
     }
 
     fn open_file(&mut self, target_path: &PathBuf) {
-        
+
+
+        let extension_to_language_map = HashMap::from([("", ""), ("c", "c"), ("h", "cpp"), ("cpp", "cpp"), ("rs", "rust"), ("md", "markdown")]);
+                
         let content = if target_path.exists() {
             match fs::read_to_string(target_path) {
                 Ok(ok)  => ok,
@@ -486,8 +460,16 @@ impl App {
         } else {
             return;
         };
+        let extension = target_path.extension().unwrap_or_default().to_str().unwrap_or_default();
+        let lang = {
+            if let Some(lang) = extension_to_language_map.get(extension) {
+                lang.to_string()
+            } else {
+                "shell".to_string()
+            }
+        };
 
-        let editor = Editor::new("rust", content.as_str(), vesper()).unwrap();
+        let editor = Editor::new(&lang, content.as_str(), vesper()).unwrap();
        
         self.open_file = Some(target_path.clone());
         self.editor    = Some(editor);
@@ -592,7 +574,7 @@ impl App {
                 match editor_focus {
                     EditorFocus::MAIN => {
                         if let Some(editor) = &mut self.editor {
-                            editor.mouse(mouse_event, editor_area);
+                            let _ = editor.mouse(mouse_event, editor_area);
                         };
                     },
                     EditorFocus::EXIT => {
@@ -642,7 +624,7 @@ impl App {
                         match editor_focus {
                             EditorFocus::MAIN => {
                                 if let Some(editor) = &mut self.editor {
-                                    editor.input(key_event, editor_area);
+                                    let _ = editor.input(key_event, editor_area);
                                 };
                             },
                             EditorFocus::EXIT => {
@@ -655,7 +637,7 @@ impl App {
                 }
             }, 
             
-            KeyCode::Modifier(modifiier) => {
+            KeyCode::Modifier(_modifiier) => {
 
                 match self.focus {
                     Focus::FILES => {
@@ -667,7 +649,7 @@ impl App {
                     Focus::EDITOR(_) => {
                         match &mut self.editor {
                             Some(editor) => {
-                                editor.input(key_event, editor_area);
+                                let _ =editor.input(key_event, editor_area);
                             },
                             None => {
                                 /* Nothing to do */
@@ -681,7 +663,7 @@ impl App {
                 
                 match self.focus {
                     Focus::FILES     => {
-                        if let Some(editor) = &self.editor {
+                        if let Some(_editor) = &self.editor {
                             self.focus = Focus::EDITOR(EditorFocus::MAIN);
                         } else {
                             self.focus = Focus::SHELL;
@@ -705,7 +687,7 @@ impl App {
                         match editor_focus {
                             EditorFocus::MAIN => {
                                 if let Some(editor) = &mut self.editor {
-                                    editor.input(key_event, editor_area);
+                                    let _ = editor.input(key_event, editor_area);
                                 };
                             },
                             EditorFocus::EXIT => { 
@@ -719,7 +701,7 @@ impl App {
                                                         .unwrap()
                                                         .get_content();
 
-                                        fs::write(self.open_file.as_ref().unwrap(), content);
+                                        let _ = fs::write(self.open_file.as_ref().unwrap(), content);
                                     
                                     }
 
@@ -751,7 +733,7 @@ impl App {
                     Focus::EDITOR(_) =>  {
                         match &mut self.editor {
                             Some(editor) => { 
-                                editor.input(key_event,editor_area);
+                                let _ = editor.input(key_event,editor_area);
                             },
                             None => {
                                 /* Nothing to do */
