@@ -17,7 +17,7 @@ use std::ffi::OsString;
 
 use crossbeam_channel::Sender;
 
-use portable_pty::{CommandBuilder, NativePtySystem, PtyPair, PtySize, PtySystem};
+use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 
 /*****************************************************
  * Types
@@ -48,6 +48,10 @@ impl Shell {
         self.cwd = path;
     }
 
+    pub fn set_env (&mut self, variable : &str, value : &str) {
+        self.env.insert(variable.to_string(), value.to_string());
+    }
+
     pub fn get_cwd (& self) -> &Path
     {   
         &self.cwd 
@@ -67,7 +71,10 @@ impl Shell {
 
         let mut cmd = CommandBuilder::from_argv(argv);
         cmd.cwd(self.get_cwd());
-        // TODO: Environment variables.
+        
+        for (k, v) in &self.env {
+            cmd.env(k, v);
+        }
 
         let Ok(mut _child) = pair.slave.spawn_command(cmd) else {
             return;
