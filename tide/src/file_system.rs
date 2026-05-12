@@ -9,14 +9,12 @@
 use crate::application::Direction;
 use crate::shell::Shell;
 
-use std::env::current_exe;
 use std::path::{Path, PathBuf};
 use std::slice::Iter;
-use std::sync::Mutex;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use ratatui::widgets::{List, ListState};
+use ratatui::widgets::{ListState};
 
 use walkdir::{DirEntry, WalkDir};
 

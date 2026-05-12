@@ -8,7 +8,7 @@
 
 use std::collections::VecDeque;
 
-use crossterm::{Command, event::{Event, KeyCode}};
+use crossterm::{event::{Event, KeyCode}};
 
 /*****************************************************
  * Types

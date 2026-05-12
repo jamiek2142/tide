@@ -8,7 +8,7 @@
 
 use crate::application::Direction;
 
-use ratatui::widgets::{ListItem, ListState};
+use ratatui::widgets::{ListState};
 
 /*****************************************************
  * Types
