@@ -4,6 +4,12 @@ A lightweight terminal-based IDE built using Ratatui in Rust.
 
 [Ratatui]: https://ratatui.rs
 
+## Features
+
+- First-class mouse support
+- Directory navigation
+- Shell integration  
+
 ## License
 
 Copyright (c) 2026, Tide Project
