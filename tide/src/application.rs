@@ -16,6 +16,7 @@ use crate::shell::Shell;
 use crate::file_system::FileTree;
 
 use std::env::current_exe;
+use std::fmt::format;
 use std::{
     cmp::Ordering, 
     collections::HashMap, 
@@ -455,7 +456,7 @@ impl App {
                 Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                     self.handle_key_event(key_event, editor_area)
                 }
-                Event::Mouse(mouse_event) => {
+                Event::Mouse(mouse_event) => { 
                     self.handle_mouse_event(mouse_event, editor_area, shell_area, file_area); 
                 }
                 _ => { /* Nothing to do. */ }
@@ -542,8 +543,8 @@ impl App {
         if let MouseEventKind::Down(mouse_button) = mouse_event.kind { 
             if mouse_button.is_left() {
                 
-                let x = mouse_event.row;
-                let y = mouse_event.column;
+                let x = mouse_event.column;
+                let y = mouse_event.row;
 
                 if is_in_hitbox((x, y), editor_area) {
                     if let Some(_editor) = &self.editor {
