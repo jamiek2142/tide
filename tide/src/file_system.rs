@@ -169,6 +169,24 @@ impl FileTree {
         }
     }
 
+    pub fn select_entry (&mut self, k : usize) -> Option<PathBuf> {
+       
+        if k < self.file_entries.len() {   
+            self.list_state.select(Some(k));
+        
+            if self.file_entries[k].is_dir {
+                
+                self.toggle_dir();
+
+                None
+            } else {
+                Some(self.file_entries[k].path.clone())
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn change_dir (&mut self, path : PathBuf) 
     {
         self.file_entries.clear();

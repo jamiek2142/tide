@@ -554,6 +554,12 @@ impl App {
                     self.focus = Focus::SHELL;
                 } else if is_in_hitbox((x, y), file_area) {
                     self.focus = Focus::FILES;
+ 
+                    let k = (y - 1) as usize;
+
+                    if let Some(file) = self.file_system.select_entry(k) {
+                        self.open_file(&file);
+                    }
                 }   
                 return;
             }
