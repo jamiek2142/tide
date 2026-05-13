@@ -22,17 +22,9 @@ use std::{
     }
 };
 
-use crossterm::{
-    event::{
-        self,
-        Event, 
-        KeyCode, 
-        KeyEvent, 
-        KeyEventKind, 
-        MouseEvent,
-        MouseEventKind
-    }
-};
+use crossterm::event::{
+        self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind
+    };
 
 use crossbeam_channel::{
     Receiver, 
@@ -62,7 +54,7 @@ use ansi_to_tui::IntoText as _;
 #[derive(PartialEq)]
 enum EditorFocus {
     MAIN,
-    EXIT
+    MENU
 }
 
 #[derive(PartialEq)]
@@ -71,7 +63,6 @@ enum Focus {
     SHELL,
     EDITOR(EditorFocus)
 }
-
 
 pub enum Direction {
     UP,
@@ -88,7 +79,7 @@ pub struct App {
     focus : Focus,
     editor : Option<Editor>,
     open_file : Option<PathBuf>,
-    popup_menu : Option<PopupMenu>,
+    editor_menu : Option<PopupMenu>,
     last_scroll : Instant
 }
 
@@ -147,7 +138,7 @@ impl App {
             focus: Focus::FILES,
             editor: None,
             open_file : None,
-            popup_menu : None,
+            editor_menu : None,
             last_scroll : Instant::now()
        }
     }
@@ -364,19 +355,26 @@ impl App {
                     frame.set_cursor_position(Position::new(x,y));
                 }
             }, 
-            None => {  
+            None => { 
+
+                let text = Paragraph::new(" Shift + Tab : Cycle panes\n Esc         : Exit focus\n Up          : Scroll Up\n Down       : Scroll Down")
+                                            .style(Style::default().fg(Color::DarkGray));
+                let area =  editor_area.centered(
+                                                Constraint::Length(text.clone().line_width() as u16),
+                                                Constraint::Length(4));
+                frame.render_widget(text, area);
             }
         }
         
         frame.render_widget(output, shell_output); 
 
         // Render the popup menu if set.
-        if let Some(popup) = &mut self.popup_menu {
+        if let Some(popup) = &mut self.editor_menu {
 
             let popup_area_width = editor_area.width / 4;
             let popup_area_height = 10;
 
-            let popup_area_x = editor_area.x + (editor_area.width - popup_area_width) / 2 ;
+            let popup_area_x = editor_area.x + (editor_area.width  - popup_area_width ) / 2 ;
             let popup_area_y = editor_area.y + (editor_area.height - popup_area_height) / 2 ;
 
             let popup_area = Rect::new(popup_area_x, popup_area_y, popup_area_width, popup_area_height);
@@ -594,7 +592,7 @@ impl App {
                             let _ = editor.mouse(mouse_event, editor_area);
                         };
                     },
-                    EditorFocus::EXIT => {
+                    EditorFocus::MENU => {
 
                     },
                 }
@@ -614,13 +612,13 @@ impl App {
                         match editor_focus {
 
                             EditorFocus::MAIN => {
-                                self.popup_menu = Some(PopupMenu::default().add_field("Save?").add_field("Exit?"));
-                                self.focus      = Focus::EDITOR(EditorFocus::EXIT);
+                                self.editor_menu = Some(PopupMenu::default().add_field("Save?").add_field("Exit?"));
+                                self.focus      = Focus::EDITOR(EditorFocus::MENU);
                             },
 
-                            EditorFocus::EXIT => {   
+                            EditorFocus::MENU => {   
 
-                                self.popup_menu = None;
+                                self.editor_menu = None;
                                 self.focus      = Focus::EDITOR(EditorFocus::MAIN); 
                             }
                         }
@@ -644,8 +642,8 @@ impl App {
                                     let _ = editor.input(key_event, editor_area);
                                 };
                             },
-                            EditorFocus::EXIT => {
-                                if let Some(popup) = &mut self.popup_menu {
+                            EditorFocus::MENU => {
+                                if let Some(popup) = &mut self.editor_menu {
                                     popup.traverse_items(Direction::from(key_event.code));
                                 };
                             },
@@ -676,7 +674,7 @@ impl App {
                 }
             },
 
-            KeyCode::Tab => {
+            KeyCode::BackTab => {
                 
                 match self.focus {
                     Focus::FILES     => {
@@ -707,9 +705,9 @@ impl App {
                                     let _ = editor.input(key_event, editor_area);
                                 };
                             },
-                            EditorFocus::EXIT => { 
+                            EditorFocus::MENU => { 
                                 let mut close_menu = false;
-                                if let Some(popup_menu) = &mut self.popup_menu {
+                                if let Some(popup_menu) = &mut self.editor_menu {
 
                                     if popup_menu.selected("Save?") {
 
@@ -732,7 +730,7 @@ impl App {
                                 };
 
                                 if close_menu {
-                                    self.popup_menu = None;
+                                    self.editor_menu = None;
                                 }
                             },
                         }

@@ -61,13 +61,14 @@ impl Shell {
     {
         let pty_system = NativePtySystem::default();
         let pair = pty_system.openpty(PtySize::default()).unwrap();
-        
-
+ 
         let argv = argv.join(" ");
 
         let argv = vec!["/bin/sh", "-c", &argv];
         
         let mut cmd = CommandBuilder::from_argv(argv.iter().map(OsString::from).collect());
+        
+        // Set current working dir and environment variables
         cmd.cwd(self.cwd());
         
         for (k, v) in &self.env {
