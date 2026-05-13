@@ -16,18 +16,10 @@ use crate::shell::Shell;
 use crate::file_system::FileTree;
 
 use std::{ 
-    collections::HashMap, 
-    fs, 
-    io, 
-    path::{
-        PathBuf
-    },  
-    time::{
+    cell::RefCell, collections::{HashMap, VecDeque}, fs, io, path::PathBuf, rc::Rc, time::{
         Duration,
         Instant
-    }, 
-    cell::RefCell, 
-    rc::Rc
+    }
 };
 
 use crossterm::{
@@ -162,7 +154,7 @@ impl App {
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
       
-        let target_path = self.shell.borrow().cwd_as_path();
+        let target_path = self.shell.borrow().cwd().to_path_buf();
         self.change_dir(&target_path);
 
         while !self.exit {
@@ -172,7 +164,7 @@ impl App {
                 self.output.append(&mut text);
             }
 
-            terminal.draw(|frame| self.draw(frame))?;
+            terminal.draw(|frame| self.draw(frame).expect("Failed to draw frame") )?;
 
             if let Some(command) = self.input.pop_command() { 
                 self.execute(command);  
@@ -186,7 +178,7 @@ impl App {
         self.exit = true;
     }
 
-    fn draw(&mut self, frame: &mut Frame) {
+    fn draw(&mut self, frame: &mut Frame) -> anyhow::Result<()> {
 
         let [file_area, main_area] = 
             Layout::horizontal([
@@ -418,7 +410,9 @@ impl App {
         let shell_area = Rect::new(shell_output.x, shell_output.y, shell_output.width, shell_output.height + shell_input.height);
         
         // Handle events after drawing the layout so we can use the areas drawn as part of the app.
-        self.handle_events(&editor_area, &shell_area, &file_area).unwrap();
+        self.handle_events(&editor_area, &shell_area, &file_area)?;
+
+        Ok(())
     }
 
     fn handle_events(&mut self, editor_area : &Rect, shell_area : &Rect, file_area : &Rect) -> io::Result<()> {
@@ -440,7 +434,7 @@ impl App {
        
         // TODO: Handle invalid paths. 
         
-        let target_path = std::fs::canonicalize(&target_path).unwrap_or(self.shell.borrow_mut().cwd_as_path());
+        let target_path = std::fs::canonicalize(&target_path).unwrap_or(self.shell.borrow_mut().cwd().to_path_buf());
 
         self.shell.borrow_mut().set_cwd(target_path.clone());
 
@@ -460,7 +454,7 @@ impl App {
         } else {
             return;
         };
-        let extension = target_path.extension().unwrap_or_default().to_str().unwrap_or_default();
+        let extension = target_path.extension().map(|path| path.to_str().unwrap_or_default()).unwrap_or_default();
         let lang = {
             if let Some(lang) = extension_to_language_map.get(extension) {
                 lang.to_string()
@@ -503,13 +497,25 @@ impl App {
                     let target_path = if path_arg.is_absolute() {
                         path_arg
                     } else {
-                        self.shell.borrow_mut().get_cwd().join(path_arg)
+                        self.shell.borrow_mut().cwd().to_path_buf().join(path_arg)
                     };
                     if target_path.is_dir() {
                         self.change_dir(&target_path);
                     }
                     // TODO: Print invalid directory.
                 }
+            },
+            "export" => { 
+
+                if argv.len() > 1 {
+                   
+                    let [variable, value] =  argv[1].split("=").collect::<Vec<&str>>()[..] else {
+                        todo!()
+                    };
+   
+                    self.shell.borrow_mut().set_env(variable, value);
+                }
+
             }
 
             _ => {

@@ -1894,6 +1894,7 @@ name = "tide"
 version = "0.1.0"
 dependencies = [
  "ansi-to-tui",
+ "anyhow",
  "color-eyre",
  "crossbeam-channel",
  "crossterm",

@@ -10,7 +10,7 @@
  * Crates 
  *****************************************************/
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::env;
 use std::ffi::OsString;
@@ -52,25 +52,23 @@ impl Shell {
         self.env.insert(variable.to_string(), value.to_string());
     }
 
-    pub fn get_cwd (& self) -> &Path
+    pub fn cwd (& self) -> &Path
     {   
         &self.cwd 
-    }
-
-    pub fn cwd_as_path (& self) -> PathBuf
-    {
-        self.clone().cwd
     }
 
     pub fn send_cmd(&mut self, argv: Vec<&str>) 
     {
         let pty_system = NativePtySystem::default();
         let pair = pty_system.openpty(PtySize::default()).unwrap();
+        
 
-        let argv = argv.into_iter().map(OsString::from).collect();
+        let argv = argv.join(" ");
 
-        let mut cmd = CommandBuilder::from_argv(argv);
-        cmd.cwd(self.get_cwd());
+        let argv = vec!["/bin/sh", "-c", &argv];
+        
+        let mut cmd = CommandBuilder::from_argv(argv.iter().map(OsString::from).collect());
+        cmd.cwd(self.cwd());
         
         for (k, v) in &self.env {
             cmd.env(k, v);
