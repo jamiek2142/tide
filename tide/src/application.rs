@@ -355,9 +355,28 @@ impl App {
                     frame.set_cursor_position(Position::new(x,y));
                 }
             }, 
-            None => { 
+            None => {
 
-                let text = Paragraph::new(" Shift + Tab : Cycle panes\n Esc         : Exit focus\n Up          : Scroll Up\n Down       : Scroll Down")
+                let help = vec![("Shift + Tab", "Cycle Panes"), ("Esc", "Exit focus"), ("Up", "Scroll Up"), ("Down", "Scroll Down")];
+
+
+                let longest = help.iter()
+                                        .max_by_key(|(keybinding, _)| keybinding.len())
+                                        .unwrap()
+                                        .0
+                                        .len();
+
+                let help = help.iter()
+                                                    .map(
+                                                        |(keybinding, help_text )| 
+                                                            keybinding.to_string() + 
+                                                            &" ".repeat(longest - keybinding.len()) + 
+                                                            " : " + 
+                                                            help_text
+                                                        )
+                                                    .collect::<Vec<_>>().join("\n");
+
+                let text = Paragraph::new(help)
                                             .style(Style::default().fg(Color::DarkGray));
                 let area =  editor_area.centered(
                                                 Constraint::Length(text.clone().line_width() as u16),
