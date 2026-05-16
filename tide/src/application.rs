@@ -104,12 +104,18 @@ enum EditorFocus {
 enum Focus {
     FILES,
     SHELL,
-    EDITOR(EditorFocus)
+    EDITOR(EditorFocus),
+    SEARCH
 }
 
 pub enum Direction {
     UP,
     DOWN,
+}
+
+pub enum MenuScreen {
+    EDITOR(PopupMenu),
+    SEARCH(PopupMenu)
 }
 
 pub struct App {
@@ -122,7 +128,7 @@ pub struct App {
     focus : Focus,
     editor : Option<Editor>,
     open_file : Option<PathBuf>,
-    editor_menu : Option<PopupMenu>,
+    menu_screen : Option<MenuScreen>,
     last_scroll : Instant
 }
 
@@ -181,7 +187,7 @@ impl App {
             focus: Focus::FILES,
             editor: None,
             open_file : None,
-            editor_menu : None,
+            menu_screen : None,
             last_scroll : Instant::now()
        }
     }
@@ -400,10 +406,11 @@ impl App {
             }, 
             None => {
 
-                let help = vec![("Shift + Tab", "Cycle Panes"), 
+                let help = vec![("Shift + Tab", "Cycle panes"), 
                                                    ("Esc", "Exit focus"), 
-                                                   ("Up", "Scroll Up"), 
-                                                   ("Down", "Scroll Down")];
+                                                   ("Up", "Scroll up"), 
+                                                   ("Down", "Scroll down"),
+                                                   ("Forward Slash", "Search current directory")];
 
                 let longest = help.iter()
                                         .max_by_key(|(keybinding, _)| keybinding.len())
@@ -433,41 +440,84 @@ impl App {
         frame.render_widget(output, shell_output); 
 
         // Render the popup menu if set.
-        if let Some(popup) = &mut self.editor_menu {
+        match &mut self.menu_screen {
 
-            let popup_area_width = editor_area.width / 4;
-            let popup_area_height = 10;
+            Some(MenuScreen::EDITOR(popup)) => {
 
-            let popup_area_x = editor_area.x + (editor_area.width  - popup_area_width ) / 2 ;
-            let popup_area_y = editor_area.y + (editor_area.height - popup_area_height) / 2 ;
+                let popup_area_width = editor_area.width / 4;
+                let popup_area_height = 10;
 
-            let popup_area = Rect::new(popup_area_x, popup_area_y, popup_area_width, popup_area_height);
-            let popup_block = Block::default().borders(Borders::ALL);
+                let popup_area_x = editor_area.x + (editor_area.width  - popup_area_width ) / 2 ;
+                let popup_area_y = editor_area.y + (editor_area.height - popup_area_height) / 2 ;
 
+                let popup_area = Rect::new(popup_area_x, popup_area_y, popup_area_width, popup_area_height);
+                let popup_block = Block::default().borders(Borders::ALL);
 
-            let popup_items = popup.get_list_items();
-            let popup_items : Vec<ListItem> = popup_items
-                .iter()
-                .map(|k| {
-                    ListItem::new(k.as_str())
-                })
-                .collect();
+                let popup_items = popup.get_list_items();
+                let popup_items : Vec<ListItem> = popup_items
+                    .iter()
+                    .map(|k| {
+                        ListItem::new(k.as_str())
+                    })
+                    .collect();
 
-            let popup_list = List::new(popup_items)
-                .block(popup_block)
-                .highlight_style(
-                    Style::default()
-                        .bg(Color::Yellow)
-                        .fg(Color::Black)
-                    .   add_modifier(Modifier::BOLD),
-                )
-                .highlight_symbol(">> ");
+                let popup_list = List::new(popup_items)
+                    .block(popup_block)
+                    .highlight_style(
+                        Style::default()
+                            .bg(Color::Yellow)
+                            .fg(Color::Black)
+                    .       add_modifier(Modifier::BOLD),
+                    )
+                    .highlight_symbol(">> ");
 
-            frame.render_widget(Clear, popup_area);
+                frame.render_widget(Clear, popup_area);
 
-            frame.render_stateful_widget(popup_list, popup_area, popup.get_state());
+                frame.render_stateful_widget(popup_list, popup_area, popup.get_state());
+            },
+
+            Some(MenuScreen::SEARCH(popup)) => {
+                
+                let frame_area = frame.area();
+
+                let popup_area_width = frame_area.width/2;
+
+                let popup_area_height = frame_area.height/2;
+
+                let popup_area_x = frame_area.x + (frame_area.width  - popup_area_width ) / 2 ;
+                let popup_area_y = frame_area.y + (frame_area.height - popup_area_height) / 2 ;
+
+                let popup_area = Rect::new(popup_area_x, popup_area_y, popup_area_width, popup_area_height);
+                let popup_block = Block::default().borders(Borders::ALL);
+             
+                let popup_items = popup.get_list_items();
+                let popup_items : Vec<ListItem> = popup_items
+                    .iter()
+                    .map(|k| {
+                        ListItem::new(k.as_str())
+                    })
+                    .collect();
+
+                let popup_list = List::new(popup_items)
+                    .block(popup_block)
+                    .highlight_style(
+                        Style::default()
+                            .bg(Color::Yellow)
+                            .fg(Color::Black)
+                    .       add_modifier(Modifier::BOLD),
+                    )
+                    .highlight_symbol(">> ");
+
+                frame.render_widget(Clear, popup_area);
+
+                frame.render_stateful_widget(popup_list, popup_area, popup.get_state());
+            },
+
+            _ => { 
+                /* Nothing to render. */ 
+            }
         }
-    
+  
         // Create a rect which maps to the entire shell area for handling mouse events.
         let shell_area = Rect::new(shell_output.x, shell_output.y, shell_output.width, shell_output.height + shell_input.height);
         
@@ -626,7 +676,7 @@ impl App {
         };  
 
         match &self.focus {
-            Focus::SHELL => {
+            Focus::SHELL | Focus::SEARCH => {
                 
                 
             },
@@ -670,19 +720,23 @@ impl App {
                 match &self.focus {
                     Focus::SHELL |
                     Focus::FILES  => self.exit(),
+                    Focus::SEARCH => {
+                        self.menu_screen = None;
+                        self.focus       = Focus::FILES;
+                    },  
                     Focus::EDITOR(editor_focus) => {
 
                         match editor_focus {
 
                             EditorFocus::MAIN => {
-                                self.editor_menu = Some(PopupMenu::default().add_field("Save?").add_field("Exit?"));
-                                self.focus      = Focus::EDITOR(EditorFocus::MENU);
+                                self.menu_screen = Some(MenuScreen::EDITOR(PopupMenu::default().add_field("Save?").add_field("Exit?")));
+                                self.focus       = Focus::EDITOR(EditorFocus::MENU);
                             },
 
                             EditorFocus::MENU => {   
 
-                                self.editor_menu = None;
-                                self.focus      = Focus::EDITOR(EditorFocus::MAIN); 
+                                self.menu_screen = None;
+                                self.focus       = Focus::EDITOR(EditorFocus::MAIN); 
                             }
                         }
                     },
@@ -690,6 +744,12 @@ impl App {
             },
             KeyCode::Down | KeyCode::Up  => {
                 match &self.focus {
+
+                  Focus::SEARCH => {
+                    if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
+                        popup.traverse_items(Direction::from(key_event.code));
+                    };
+                  },
                   Focus::FILES  => {
                       if let Some(file) = self.file_system.traverse_dirs(Direction::from(key_event.code)) {
                         self.open_file(&file);
@@ -706,7 +766,7 @@ impl App {
                                 };
                             },
                             EditorFocus::MENU => {
-                                if let Some(popup) = &mut self.editor_menu {
+                                if let Some(MenuScreen::EDITOR(popup)) = &mut self.menu_screen {
                                     popup.traverse_items(Direction::from(key_event.code));
                                 };
                             },
@@ -718,7 +778,7 @@ impl App {
             KeyCode::Modifier(_modifiier) => {
 
                 match self.focus {
-                    Focus::FILES => {
+                    Focus::FILES | Focus::SEARCH => {
                         // TODO: File modifiiers.
                     },
                     Focus::SHELL => {
@@ -740,6 +800,9 @@ impl App {
             KeyCode::BackTab => {
                 
                 match self.focus {
+                    Focus::SEARCH => {
+
+                    },
                     Focus::FILES     => {
                         if let Some(_editor) = &self.editor {
                             self.focus = Focus::EDITOR(EditorFocus::MAIN);
@@ -755,6 +818,9 @@ impl App {
             KeyCode::Enter => {
                 
                 match &self.focus {
+                    Focus::SEARCH => {
+
+                    },
                     Focus::FILES  => {
                         self.handle_file_key_press(); 
                     },
@@ -770,7 +836,7 @@ impl App {
                             },
                             EditorFocus::MENU => { 
                                 let mut close_menu = false;
-                                if let Some(popup_menu) = &mut self.editor_menu {
+                                if let Some(MenuScreen::EDITOR(popup_menu)) = &mut self.menu_screen {
 
                                     if popup_menu.selected("Save?") {
 
@@ -793,15 +859,24 @@ impl App {
                                 };
 
                                 if close_menu {
-                                    self.editor_menu = None;
+                                    self.menu_screen = None;
                                 }
                             },
                         }
                     },
                 }
             },
+
+            KeyCode::Char('/') => {     
+                self.menu_screen = Some(MenuScreen::SEARCH(PopupMenu::default().add_field("Search: ")));
+                self.focus       = Focus::SEARCH; 
+            }
+
             _ => {
                 match self.focus {
+                    Focus::SEARCH => {
+
+                    },
                     Focus::FILES => {
                         // TODO: Handle other keys
                     },  
