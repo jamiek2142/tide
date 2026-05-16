@@ -11,6 +11,7 @@ mod shell;
 mod file_system;
 mod application;
 mod popup_menu;
+mod search;
 
 /*****************************************************
  * Crates

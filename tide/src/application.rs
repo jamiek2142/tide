@@ -16,14 +16,34 @@ use crate::shell::Shell;
 use crate::file_system::FileTree;
 
 use std::{ 
-    cell::RefCell, collections::{HashMap, VecDeque}, fs, io, path::PathBuf, rc::Rc, time::{
+    cell::{
+        RefCell
+    }, 
+    collections::{
+    HashMap
+    }, 
+    fs, 
+    io, 
+    path::{
+        PathBuf
+    }, 
+    rc::{
+        Rc
+    }, 
+    time::{
         Duration,
         Instant
     }
 };
 
 use crossterm::event::{
-        self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind
+        self, 
+        Event, 
+        KeyCode, 
+        KeyEvent, 
+        KeyEventKind, 
+        MouseEvent, 
+        MouseEventKind
     };
 
 use crossbeam_channel::{
@@ -32,17 +52,40 @@ use crossbeam_channel::{
 };
 
 use ratatui::{
-    DefaultTerminal, Frame,
-    layout::{Margin, Constraint, Layout, Position, Rect, Spacing},
-    style::{Color, Modifier, Style},
+    DefaultTerminal, 
+    Frame,
+    layout::{
+        Margin, 
+        Constraint, 
+        Layout, 
+        Position, 
+        Rect, 
+        Spacing
+    },
+    style::{
+        Color, 
+        Modifier, 
+        Style
+    },
     text::Text,
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    widgets::{
+        Block, 
+        Borders, 
+        Clear, 
+        List, 
+        ListItem, 
+        Paragraph
+    },
     symbols::merge::MergeStrategy
 };
 
 use ratatui_code_editor::{
-    editor::{ Editor
-    }, theme::vesper
+    editor::{ 
+        Editor
+    }, 
+    theme::{
+        vesper
+    }
 };
 
 use ansi_to_tui::IntoText as _;
@@ -357,8 +400,10 @@ impl App {
             }, 
             None => {
 
-                let help = vec![("Shift + Tab", "Cycle Panes"), ("Esc", "Exit focus"), ("Up", "Scroll Up"), ("Down", "Scroll Down")];
-
+                let help = vec![("Shift + Tab", "Cycle Panes"), 
+                                                   ("Esc", "Exit focus"), 
+                                                   ("Up", "Scroll Up"), 
+                                                   ("Down", "Scroll Down")];
 
                 let longest = help.iter()
                                         .max_by_key(|(keybinding, _)| keybinding.len())
@@ -519,7 +564,6 @@ impl App {
                     if target_path.is_dir() {
                         self.change_dir(&target_path);
                     }
-                    // TODO: Print invalid directory.
                 }
             },
             "export" => { 
