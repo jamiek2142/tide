@@ -33,6 +33,13 @@ use std::{
     io,
     path::{
         Path
+    },
+    thread,
+    sync::{
+        mpsc::{
+            self, 
+            Receiver
+        }
     }
 };
 
@@ -103,93 +110,95 @@ impl Sink for LineCollector {
  * Function Definitions 
  *****************************************************/
 
-pub fn search (cwd : &Path, query : &str) -> Vec<SearchItem> {
+pub fn search (cwd : &Path, query : &str) -> Receiver<(u32, SearchItem)> {
     
-    let mut items = Vec::new();
-    let mut searcher = Searcher::new();
+        
+    let (build_tx, build_rx) = crossbeam_channel::bounded(2048);
+    let cwd = cwd.to_path_buf();
+    
+    thread::spawn(move || {
+        let walker = WalkBuilder::new(&cwd).build_parallel();
 
-    for entry in WalkBuilder::new(cwd).build() {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
+        walker.run(move || {
 
-        let path = entry.path();
-        let path_str = path.to_string_lossy().into_owned();
-
-        if entry.file_type().map_or(false, |ft| ft.is_dir()) {
-
-            items.push(
-                SearchItem::new(
-                &path_str, 
-                None, 
-                SearchItemType::DIRECTORY
-                )
-            );
-             
-        } else if entry.file_type().map_or(false, |ft| ft.is_file()) {
-                        
-            items.push(
-                SearchItem::new(
-                    &path_str, 
-                    None, 
-                    SearchItemType::FILE
-                )
-            );
-
-            let mut collector = LineCollector {
-                path_str: path_str.clone(),
-                lines: Vec::new(),
+        let mut searcher = Searcher::new();    
+        let thread_local_tx : crossbeam_channel::Sender<SearchItem> = build_tx.clone(); 
+    
+        Box::new(move |entry | { 
+        
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => return ignore::WalkState::Continue
             };
 
-            let matcher = RegexMatcher::new(".*").unwrap();
+            let path = entry.path();
+            let path_str = path.to_string_lossy().into_owned();
 
-            if searcher.search_path(matcher, path, &mut collector).is_ok() {
-                items.extend(collector.lines);
+            if entry.file_type().map_or(false, |ft| ft.is_dir()) {
+
+               let _ = thread_local_tx.send(
+                    SearchItem::new(
+                    &path_str, 
+                    None, 
+                    SearchItemType::DIRECTORY
+                    )
+                );
+             
+            } else if entry.file_type().map_or(false, |ft| ft.is_file()) {
+                        
+                let _ = thread_local_tx.send(
+                    SearchItem::new(
+                        &path_str, 
+                        None, 
+                        SearchItemType::FILE
+                    )
+                );
+
+                let mut collector = LineCollector {
+                    path_str: path_str.clone(),
+                    lines: Vec::new(),
+                };
+
+                let matcher = RegexMatcher::new(".*").unwrap();
+
+                if searcher.search_path(matcher, path, &mut collector).is_ok() {
+                   
+                    for line in collector.lines {
+                        let _ = thread_local_tx.send(line);
+                    }
+                }
             }
-        }
-    }
 
-    let query = nucleo::pattern::Pattern::parse(
-        query,
-        nucleo::pattern::CaseMatching::Ignore,
-        nucleo::pattern::Normalization::Smart,
-    );
-
-    let mut matches: Vec<(u32, SearchItem)> = items
-        .into_par_iter()
-        .filter_map(|item| {
-            let mut local_matcher = Matcher::new(Config::DEFAULT);
-            let mut buffer = Vec::new();
-            let utf32_display = Utf32Str::new(&item.display, &mut buffer);
-            
-            query.score(utf32_display, &mut local_matcher).map(|score| (score, item))
+            ignore::WalkState::Continue
         })
-        .collect();
+    });
+    });
 
-    matches.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+    //drop(build_tx);
 
-    matches.iter().filter_map(|(score, item)| if *score > 100 { Some(item.clone()) } else { None }).collect()
+    let (tx, rx) = mpsc::channel();
 
+    let query = query.to_string();
+    
+    rayon::spawn(move || {
+        let query = nucleo::pattern::Pattern::parse(
+            &query,
+            nucleo::pattern::CaseMatching::Ignore,
+            nucleo::pattern::Normalization::Smart,
+        );
+
+        build_rx.into_iter().par_bridge()
+            .for_each(|item| {
+                let mut local_matcher = Matcher::new(Config::DEFAULT);
+                let mut buffer = Vec::new();
+                let utf32_display = Utf32Str::new(&item.display, &mut buffer);
+            
+                if let Some((score, item)) = query.score(utf32_display, &mut local_matcher).map(|score| (score, item)) {
+                    let _ = tx.send((score, item)); 
+                };
+        });    
+    });
+
+    rx
 }
 
-/*****************************************************
- * Tests
- *****************************************************/
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-   
-    #[test]
-    fn test_search() { 
-        let matches = search(Path::new("./"), "main");
-
-        // 7. Output findings
-        for  item in matches.iter().take(10) {
-            println!("{:?}", item);
-        }
-    }
-
-}

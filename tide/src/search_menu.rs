@@ -6,15 +6,14 @@
  * Crates
  *****************************************************/
 
-use std::path::Path;
+use std::{sync::mpsc::Receiver, path::Path};
 
-use crate::application::Direction;
+use crate::{application::Direction};
 use crate::input::Input;
 use crate::popup_menu::PopupMenu;
 
 use crate::search::SearchItem;
 use crate::search;
-
 use ratatui::widgets::{ListState};
 
 use crossterm::event::Event;
@@ -35,6 +34,10 @@ pub struct SearchMenu {
 
 impl SearchMenu {
 
+    pub fn add_field (&mut self, item : SearchItem) {
+        self.popup = self.popup.clone().add_field(item);       
+    }
+
     pub fn get_input_to_render (&self) -> &str {
         self.input.get_input_to_render()
     }
@@ -51,18 +54,13 @@ impl SearchMenu {
         self.popup.traverse_items(direction)       
     }
 
-    pub fn search (&mut self, cwd : &Path) {
+    pub fn search (&mut self, cwd : &Path) -> Receiver<(u32, SearchItem)> {
         
         self.popup.reset();
 
         let query= self.input.get_input_to_render();
         
-        let matches= search::search(cwd,query);
-        
-        self.popup = matches.iter()
-                            .fold(self.popup.clone(), 
-                            |acc, x| acc.add_field(x.clone()));
-       
+        search::search(cwd,query) 
     }
 
     pub fn handle_event(&mut self, event : &Event)

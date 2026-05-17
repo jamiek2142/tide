@@ -10,29 +10,15 @@
  * Crates
  *****************************************************/
 
-use crate::search_menu::SearchMenu;
+use crate::{search::SearchItem, search_menu::SearchMenu};
 use crate::popup_menu::PopupMenu;
 use crate::input::Input;
 use crate::shell::Shell;
 use crate::file_system::FileTree;
-use crate::search::SearchItemType;
+use crate::search::{self, SearchItemType};
 
 use std::{ 
-    cell::{
-        RefCell
-    }, 
-    collections::{
-    HashMap
-    }, 
-    fs, 
-    io, 
-    path::{
-        PathBuf
-    }, 
-    rc::{
-        Rc
-    }, 
-    time::{
+    cell::RefCell, collections::HashMap, fs, io, path::PathBuf, rc::Rc, sync::mpsc, time::{
         Duration,
         Instant
     }
@@ -131,7 +117,8 @@ pub struct App {
     editor : Option<Editor>,
     open_file : Option<PathBuf>,
     menu_screen : Option<MenuScreen>,
-    last_scroll : Instant
+    last_scroll : Instant,
+    search_rx : Option<mpsc::Receiver<(u32, SearchItem)>>
 }
 
 /*****************************************************
@@ -190,7 +177,8 @@ impl App {
             editor: None,
             open_file : None,
             menu_screen : None,
-            last_scroll : Instant::now()
+            last_scroll : Instant::now(),
+            search_rx : None
        }
     }
 
@@ -205,7 +193,21 @@ impl App {
                 let mut text = text.lines().map(String::from).collect();
                 self.output.append(&mut text);
             }
-
+ 
+            if let Some(search_rx) = &mut self.search_rx {
+                
+                while let Ok((score, item)) = search_rx.try_recv() {
+                    
+                    if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
+                       
+                        if score > 100 
+                        {
+                            popup.add_field(item);
+                        }
+                    }
+                }
+            }
+            
             terminal.draw(|frame| self.draw(frame).expect("Failed to draw frame") )?;
 
             if let Some(command) = self.input.pop_command() { 
@@ -862,7 +864,7 @@ impl App {
                                             .to_path_buf();
 
                         if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
-                            popup.search(&cwd);
+                            self.search_rx = Some(popup.search(&cwd));
                         } 
                     },
                     Focus::FILES  => {
