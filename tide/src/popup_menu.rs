@@ -15,8 +15,8 @@ use ratatui::widgets::{ListState};
  *****************************************************/
 
 #[derive(Default, Clone)]
-pub struct PopupMenu {
-    list  : Vec<String>,
+pub struct PopupMenu<T> where T : Clone + PartialEq {
+    list  : Vec<T>,
     state : ListState
 }
 
@@ -24,7 +24,7 @@ pub struct PopupMenu {
  * Implementations
  *****************************************************/
 
-impl PopupMenu {
+impl<T> PopupMenu<T> where T : Clone + PartialEq {
 
    /** Add a single field to a PopupMenu.
     *
@@ -32,11 +32,11 @@ impl PopupMenu {
     *
     * \returns The popup menu object for method chaining.
     */
-   pub fn add_field(mut self, text :  &str) -> Self {  
+   pub fn add_field(mut self, field : T) -> Self {  
 
         let was_empty = self.list.is_empty();
 
-        self.list.push(text.to_string()); 
+        self.list.push(field); 
        
         if was_empty {
             self.state.select(Some(0));
@@ -54,11 +54,11 @@ impl PopupMenu {
         &mut self.state
    }
 
-   pub fn get_list_items (& self) -> Vec<String> {
+   pub fn get_list_items (& self) -> Vec<T> {
         self.list.clone()
    }
 
-   pub fn selected (&self, text : &str) -> bool {
+   pub fn selected (&self, field : T) -> bool {
         
        let Some(index) = self.state.selected() else {
            return false;
@@ -68,7 +68,7 @@ impl PopupMenu {
            return false;
        }
 
-       self.list[index] == text
+       self.list[index] == field
    }
     
    pub fn traverse_items (&mut self, direction: Direction) {

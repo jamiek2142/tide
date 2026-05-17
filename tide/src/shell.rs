@@ -10,7 +10,7 @@
  * Crates 
  *****************************************************/
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::env;
 use std::ffi::OsString;

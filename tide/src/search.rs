@@ -30,21 +30,25 @@ use nucleo::{
 use rayon::prelude::*;
 
 use std::{
-    io
+    io,
+    path::{
+        Path
+    }
 };
 
 /*****************************************************
  * Types 
  *****************************************************/
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub enum SearchItemType {
     FILE,
+    #[default] 
     TEXT,
     DIRECTORY
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct SearchItem {
     display  : String,
     metadata : Option<String>,
@@ -74,6 +78,10 @@ impl SearchItem {
     pub fn display(&self) -> &str {
         &self.display
     }
+
+    pub fn item_type(&self) -> SearchItemType {
+        self.item_type.clone()
+    }
 }
 
 impl Sink for LineCollector {
@@ -95,12 +103,12 @@ impl Sink for LineCollector {
  * Function Definitions 
  *****************************************************/
 
-pub fn search (query : &str) -> Vec<SearchItem> {
+pub fn search (cwd : &Path, query : &str) -> Vec<SearchItem> {
     
     let mut items = Vec::new();
     let mut searcher = Searcher::new();
 
-    for entry in WalkBuilder::new("./").build() {
+    for entry in WalkBuilder::new(cwd).build() {
         let entry = match entry {
             Ok(e) => e,
             Err(_) => continue,
@@ -161,7 +169,7 @@ pub fn search (query : &str) -> Vec<SearchItem> {
 
     matches.sort_unstable_by(|a, b| b.0.cmp(&a.0));
 
-    matches.iter().map(|(_score, item)| item.clone()).collect()
+    matches.iter().filter_map(|(score, item)| if *score > 100 { Some(item.clone()) } else { None }).collect()
 
 }
 
@@ -176,7 +184,7 @@ mod tests {
    
     #[test]
     fn test_search() { 
-        let matches = search("main");
+        let matches = search(Path::new("./"), "main");
 
         // 7. Output findings
         for  item in matches.iter().take(10) {

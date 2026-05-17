@@ -6,14 +6,14 @@
  * Crates
  *****************************************************/
 
+use std::path::Path;
+
 use crate::application::Direction;
 use crate::input::Input;
 use crate::popup_menu::PopupMenu;
 
-use crate::search::{
-    self,
-    SearchItem
-};
+use crate::search::SearchItem;
+use crate::search;
 
 use ratatui::widgets::{ListState};
 
@@ -26,7 +26,7 @@ use crossterm::event::Event;
 #[derive(Default, Clone)]
 pub struct SearchMenu {
     input : Input,
-    popup : PopupMenu
+    popup : PopupMenu<SearchItem>
 }
 
 /*****************************************************
@@ -43,29 +43,25 @@ impl SearchMenu {
         self.popup.get_state()
     }
 
-    pub fn get_list_items (& self) -> Vec<String> {
+    pub fn get_list_items (& self) -> Vec<SearchItem> {
         self.popup.get_list_items()
      }
-
-    pub fn selected (&self, text : &str) -> bool {
-        self.popup.selected(text)        
-    }
     
     pub fn traverse_items (&mut self, direction: Direction) {
         self.popup.traverse_items(direction)       
     }
 
-    pub fn search (&mut self) {
+    pub fn search (&mut self, cwd : &Path) {
         
         self.popup.reset();
 
         let query= self.input.get_input_to_render();
         
-        let matches= search::search(query);
+        let matches= search::search(cwd,query);
         
         self.popup = matches.iter()
                             .fold(self.popup.clone(), 
-                            |acc, x| acc.add_field(x.display()));
+                            |acc, x| acc.add_field(x.clone()));
        
     }
 

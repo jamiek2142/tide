@@ -15,6 +15,7 @@ use crate::popup_menu::PopupMenu;
 use crate::input::Input;
 use crate::shell::Shell;
 use crate::file_system::FileTree;
+use crate::search::SearchItemType;
 
 use std::{ 
     cell::{
@@ -115,7 +116,7 @@ pub enum Direction {
 }
 
 pub enum MenuScreen {
-    EDITOR(PopupMenu),
+    EDITOR(PopupMenu<String>),
     SEARCH(SearchMenu)
 }
 
@@ -506,7 +507,25 @@ impl App {
                 let popup_items : Vec<ListItem> = popup_items
                     .iter()
                     .map(|k| {
-                        ListItem::new(k.as_str())
+
+                        let style = match k.item_type() {
+                            SearchItemType::FILE => {
+                                Style::default()
+                                    .fg(Color::Green)
+                                    .add_modifier(Modifier::BOLD)
+                            },
+                            SearchItemType::DIRECTORY => {
+                                Style::default()
+                                    .fg(Color::LightMagenta)
+                                    .add_modifier(Modifier::BOLD)
+                            },
+                            SearchItemType::TEXT => {
+                                Style::default()
+                            },
+                        };
+                            
+                
+                        ListItem::new(k.display()).style(style)
                     })
                     .collect();
 
@@ -746,7 +765,7 @@ impl App {
                         match editor_focus {
 
                             EditorFocus::MAIN => {
-                                self.menu_screen = Some(MenuScreen::EDITOR(PopupMenu::default().add_field("Save?").add_field("Exit?")));
+                                self.menu_screen = Some(MenuScreen::EDITOR(PopupMenu::default().add_field("Save?".to_owned()).add_field("Exit?".to_owned())));
                                 self.focus       = Focus::EDITOR(EditorFocus::MENU);
                             },
 
@@ -836,8 +855,14 @@ impl App {
                 
                 match &self.focus {
                     Focus::SEARCH => {
+
+                        let cwd = self.shell
+                                            .borrow()
+                                            .cwd()
+                                            .to_path_buf();
+
                         if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
-                            popup.search();
+                            popup.search(&cwd);
                         } 
                     },
                     Focus::FILES  => {
@@ -857,7 +882,7 @@ impl App {
                                 let mut close_menu = false;
                                 if let Some(MenuScreen::EDITOR(popup_menu)) = &mut self.menu_screen {
 
-                                    if popup_menu.selected("Save?") {
+                                    if popup_menu.selected("Save?".to_owned()) {
 
                                         let content = self.editor
                                                         .as_ref()
@@ -868,7 +893,7 @@ impl App {
                                     
                                     }
 
-                                    if popup_menu.selected("Exit?") {
+                                    if popup_menu.selected("Exit?".to_owned()) {
                                         self.editor = None;
 
                                         self.focus  = Focus::FILES;
