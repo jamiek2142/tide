@@ -188,6 +188,7 @@ impl App {
         self.change_dir(&target_path);
 
         while !self.exit {
+            
             while let Ok(bytes) = self.rx.try_recv() {
                 let text = String::from_utf8_lossy(&bytes).to_string();
                 let mut text = text.lines().map(String::from).collect();
@@ -200,6 +201,8 @@ impl App {
                     
                     if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
                        
+                        // TODO: couldn't find much info on scoring for fuzzy-search,
+                        //       so just add all matches for now. Pretty crappy though. 
                         if score > 0 
                         {
                             popup.add_field(score, item);
@@ -210,6 +213,7 @@ impl App {
             
             terminal.draw(|frame| self.draw(frame).expect("Failed to draw frame") )?;
 
+            // TODO: wait until last command has completed! 
             if let Some(command) = self.input.pop_command() { 
                 self.execute(command);  
             };
@@ -222,6 +226,9 @@ impl App {
         self.exit = true;
     }
 
+    // TODO: insane amount of logic in this function. Error handling is non-existent.
+    //       needs refactoring. Ideally rendering would be handed off to relevant 
+    //       components, but API is tricky w/o context of UI elements.
     fn draw(&mut self, frame: &mut Frame) -> anyhow::Result<()> {
 
         let [file_area, main_area] = 
@@ -279,9 +286,9 @@ impl App {
 
         let text: Text = last_lines
                         .join("\n")
-            .into_bytes()
-            .into_text()
-            .unwrap_or_default();
+                        .into_bytes()
+                        .into_text()
+                        .unwrap_or_default();
 
         let output_block = {
                
@@ -331,7 +338,6 @@ impl App {
                     } 
                 }
             }; 
-
             
         let current_dir_path = self.file_system.get_current_dir_to_render();
         let avaiable_space = if file_area.width > 15 { 
@@ -397,7 +403,7 @@ impl App {
         
         }
  
-        // Render text editor and shell output
+        // Render text editor and shell output. TODO: cleanup.
         match &self.editor {
             Some (editor) => {
                 frame.render_widget(editor, editor_area);
@@ -422,18 +428,17 @@ impl App {
                                         .0
                                         .len();
 
-                let help = help.iter()
-                                                    .map(
-                                                        |(keybinding, help_text )| 
-                                                            keybinding.to_string() + 
-                                                            &" ".repeat(longest - keybinding.len()) + 
-                                                            " : " + 
-                                                            help_text
-                                                        )
-                                                    .collect::<Vec<_>>().join("\n");
+                let help = help
+                            .iter()
+                            .map(|(keybinding, help_text )| 
+                                    keybinding.to_string() + 
+                                    &" ".repeat(longest - keybinding.len()) + 
+                                    " : " + 
+                                    help_text
+                                ).collect::<Vec<_>>().join("\n");
 
                 let text = Paragraph::new(help)
-                                            .style(Style::default().fg(Color::DarkGray));
+                            .style(Style::default().fg(Color::DarkGray));
                 let area =  editor_area.centered(
                                                 Constraint::Length(text.clone().line_width() as u16),
                                                 Constraint::Length(4));
@@ -454,7 +459,7 @@ impl App {
                 let popup_area_x = editor_area.x + (editor_area.width  - popup_area_width ) / 2 ;
                 let popup_area_y = editor_area.y + (editor_area.height - popup_area_height) / 2 ;
 
-                let popup_area = Rect::new(popup_area_x, popup_area_y, popup_area_width, popup_area_height);
+                let popup_area  = Rect::new(popup_area_x, popup_area_y, popup_area_width, popup_area_height);
                 let popup_block = Block::default().borders(Borders::ALL);
 
                 let popup_items = popup.get_list_items().to_vec();
@@ -471,9 +476,8 @@ impl App {
                         Style::default()
                             .bg(Color::Yellow)
                             .fg(Color::Black)
-                    .       add_modifier(Modifier::BOLD),
-                    )
-                    .highlight_symbol(">> ");
+                            .add_modifier(Modifier::BOLD),
+                    ).highlight_symbol(">> ");
 
                 frame.render_widget(Clear, popup_area);
 
@@ -484,8 +488,7 @@ impl App {
                 
                 let frame_area = frame.area();
 
-                let popup_area_width = frame_area.width/2;
-
+                let popup_area_width  = frame_area.width/2;
                 let popup_area_height = frame_area.height/2;
 
                 let popup_area_x = frame_area.x + (frame_area.width  - popup_area_width ) / 2 ;
@@ -503,10 +506,9 @@ impl App {
                     };  
                 
                 let search_block = Block::default().borders(Borders::TOP | Borders::RIGHT | Borders::LEFT);
-                let input_block = Block::default().borders(Borders::BOTTOM | Borders::RIGHT | Borders::LEFT);
+                let input_block  = Block::default().borders(Borders::BOTTOM | Borders::RIGHT | Borders::LEFT);
  
                 let popup_items = popup.get_list_items();
-
                 let popup_items : Vec<ListItem> = popup_items.iter()
                     .map(|k| {
 
@@ -594,7 +596,6 @@ impl App {
     }
 
     fn open_file(&mut self, target_path: &PathBuf) {
-
 
         let extension_to_language_map = HashMap::from([("", ""), ("c", "c"), ("h", "cpp"), ("cpp", "cpp"), ("rs", "rust"), ("md", "markdown")]);
                 
