@@ -69,7 +69,11 @@ impl SearchItem {
             metadata : metadata.map(|text| text.to_string()),
             item_type: item_type
         }
-    }   
+    }
+
+    pub fn display(&self) -> &str {
+        &self.display
+    }
 }
 
 impl Sink for LineCollector {

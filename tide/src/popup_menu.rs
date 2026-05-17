@@ -45,6 +45,11 @@ impl PopupMenu {
         self
    }
 
+   pub fn reset (&mut self) {
+        self.list.clear();
+        self.state.select(None);
+   }
+
    pub fn get_state(&mut self) -> &mut ListState {
         &mut self.state
    }

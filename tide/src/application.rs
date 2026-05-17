@@ -10,6 +10,7 @@
  * Crates
  *****************************************************/
 
+use crate::search_menu::SearchMenu;
 use crate::popup_menu::PopupMenu;
 use crate::input::Input;
 use crate::shell::Shell;
@@ -115,7 +116,7 @@ pub enum Direction {
 
 pub enum MenuScreen {
     EDITOR(PopupMenu),
-    SEARCH(PopupMenu)
+    SEARCH(SearchMenu)
 }
 
 pub struct App {
@@ -488,8 +489,19 @@ impl App {
                 let popup_area_y = frame_area.y + (frame_area.height - popup_area_height) / 2 ;
 
                 let popup_area = Rect::new(popup_area_x, popup_area_y, popup_area_width, popup_area_height);
-                let popup_block = Block::default().borders(Borders::ALL);
-             
+                
+                let [search_area, input_area] = 
+                    Layout::vertical([
+                        Constraint::Fill(24), 
+                        Constraint::Min(1)
+                    ]).split(popup_area)[..] 
+                    else {
+                        todo!() 
+                    };  
+                
+                let search_block = Block::default().borders(Borders::TOP | Borders::RIGHT | Borders::LEFT);
+                let input_block = Block::default().borders(Borders::BOTTOM | Borders::RIGHT | Borders::LEFT);
+ 
                 let popup_items = popup.get_list_items();
                 let popup_items : Vec<ListItem> = popup_items
                     .iter()
@@ -499,7 +511,7 @@ impl App {
                     .collect();
 
                 let popup_list = List::new(popup_items)
-                    .block(popup_block)
+                    .block(search_block)
                     .highlight_style(
                         Style::default()
                             .bg(Color::Yellow)
@@ -509,8 +521,13 @@ impl App {
                     .highlight_symbol(">> ");
 
                 frame.render_widget(Clear, popup_area);
+               
+                let text = " > ".to_string() + popup.get_input_to_render();
 
-                frame.render_stateful_widget(popup_list, popup_area, popup.get_state());
+                let input = Paragraph::new(text).block(input_block);                   
+                
+                frame.render_widget(input, input_area);
+                frame.render_stateful_widget(popup_list, search_area, popup.get_state());
             },
 
             _ => { 
@@ -819,7 +836,9 @@ impl App {
                 
                 match &self.focus {
                     Focus::SEARCH => {
-
+                        if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
+                            popup.search();
+                        } 
                     },
                     Focus::FILES  => {
                         self.handle_file_key_press(); 
@@ -868,14 +887,16 @@ impl App {
             },
 
             KeyCode::Char('/') => {     
-                self.menu_screen = Some(MenuScreen::SEARCH(PopupMenu::default().add_field("Search: ")));
+                self.menu_screen = Some(MenuScreen::SEARCH(SearchMenu::default()));
                 self.focus       = Focus::SEARCH; 
             }
 
             _ => {
                 match self.focus {
                     Focus::SEARCH => {
-
+                        if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
+                            popup.handle_event(&Event::Key(key_event));
+                        };
                     },
                     Focus::FILES => {
                         // TODO: Handle other keys

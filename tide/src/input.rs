@@ -27,6 +27,14 @@ pub struct Input
  * Implementations
  *****************************************************/
 
+impl Default for Input {
+
+    fn default () -> Self {
+        Input::new()
+    }
+
+}
+
 impl Input
 {
     pub fn new () -> Self 
