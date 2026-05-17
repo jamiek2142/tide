@@ -15,7 +15,7 @@ use crate::popup_menu::PopupMenu;
 use crate::input::Input;
 use crate::shell::Shell;
 use crate::file_system::FileTree;
-use crate::search::{self, SearchItemType};
+use crate::search::SearchItemType;
 
 use std::{ 
     cell::RefCell, collections::HashMap, fs, io, path::PathBuf, rc::Rc, sync::mpsc, time::{
@@ -200,7 +200,7 @@ impl App {
                     
                     if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
                        
-                        if score > 100 
+                        if score > 0 
                         {
                             popup.add_field(item);
                         }

@@ -9,9 +9,7 @@
 use bstr::ByteSlice;
 
 use grep_searcher::{
-    Searcher,
-    Sink,
-    SinkMatch 
+    BinaryDetection, SearcherBuilder, Searcher, Sink, SinkMatch 
 };
 
 use grep_regex::{
@@ -121,7 +119,7 @@ pub fn search (cwd : &Path, query : &str) -> Receiver<(u32, SearchItem)> {
 
         walker.run(move || {
 
-        let mut searcher = Searcher::new();    
+        let mut searcher = SearcherBuilder::new().binary_detection(BinaryDetection::quit(b'\x00')).build();    
         let thread_local_tx : crossbeam_channel::Sender<SearchItem> = build_tx.clone(); 
     
         Box::new(move |entry | { 
@@ -174,8 +172,6 @@ pub fn search (cwd : &Path, query : &str) -> Receiver<(u32, SearchItem)> {
     });
     });
 
-    //drop(build_tx);
-
     let (tx, rx) = mpsc::channel();
 
     let query = query.to_string();
@@ -188,13 +184,12 @@ pub fn search (cwd : &Path, query : &str) -> Receiver<(u32, SearchItem)> {
         );
 
         build_rx.into_iter().par_bridge()
-            .for_each(|item| {
-                let mut local_matcher = Matcher::new(Config::DEFAULT);
-                let mut buffer = Vec::new();
-                let utf32_display = Utf32Str::new(&item.display, &mut buffer);
+            .for_each_with((Matcher::new(Config::DEFAULT), Vec::new()),|(matcher, buffer),item| {
+                
+                let utf32_display = Utf32Str::new(&item.display, buffer);
             
-                if let Some((score, item)) = query.score(utf32_display, &mut local_matcher).map(|score| (score, item)) {
-                    let _ = tx.send((score, item)); 
+                if let Some(score) = query.score(utf32_display, matcher) {
+                    let _ = tx.send((score, item.clone())); 
                 };
         });    
     });
