@@ -45,6 +45,20 @@ impl<T> PopupMenu<T> where T : Clone + PartialEq {
         self
    }
 
+    pub fn insert_field(&mut self, index : usize, field : T) {
+        
+        let was_empty = self.list.is_empty();
+
+        self.list.insert(index, field); 
+       
+        if was_empty {
+            self.state.select(Some(0));
+        }
+
+    }
+
+    
+
    pub fn reset (&mut self) {
         self.list.clear();
         self.state.select(None);
@@ -54,8 +68,8 @@ impl<T> PopupMenu<T> where T : Clone + PartialEq {
         &mut self.state
    }
 
-   pub fn get_list_items (& self) -> Vec<T> {
-        self.list.clone()
+   pub fn get_list_items (& self) -> &[T] {
+        &self.list
    }
 
    pub fn selected (&self, field : T) -> bool {

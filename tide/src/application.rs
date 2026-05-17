@@ -202,7 +202,7 @@ impl App {
                        
                         if score > 0 
                         {
-                            popup.add_field(item);
+                            popup.add_field(score, item);
                         }
                     }
                 }
@@ -457,7 +457,7 @@ impl App {
                 let popup_area = Rect::new(popup_area_x, popup_area_y, popup_area_width, popup_area_height);
                 let popup_block = Block::default().borders(Borders::ALL);
 
-                let popup_items = popup.get_list_items();
+                let popup_items = popup.get_list_items().to_vec();
                 let popup_items : Vec<ListItem> = popup_items
                     .iter()
                     .map(|k| {
@@ -506,8 +506,8 @@ impl App {
                 let input_block = Block::default().borders(Borders::BOTTOM | Borders::RIGHT | Borders::LEFT);
  
                 let popup_items = popup.get_list_items();
-                let popup_items : Vec<ListItem> = popup_items
-                    .iter()
+
+                let popup_items : Vec<ListItem> = popup_items.iter()
                     .map(|k| {
 
                         let style = match k.item_type() {

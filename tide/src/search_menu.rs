@@ -22,10 +22,12 @@ use crossterm::event::Event;
  * Types
  *****************************************************/
 
+
+
 #[derive(Default, Clone)]
 pub struct SearchMenu {
     input : Input,
-    popup : PopupMenu<SearchItem>
+    popup : PopupMenu<(u32, SearchItem)>
 }
 
 /*****************************************************
@@ -34,8 +36,17 @@ pub struct SearchMenu {
 
 impl SearchMenu {
 
-    pub fn add_field (&mut self, item : SearchItem) {
-        self.popup = self.popup.clone().add_field(item);       
+    pub fn add_field (&mut self, score : u32, item : SearchItem) {
+        
+        let index = match self.popup
+            .get_list_items()
+            .binary_search_by(|elem| elem.0.cmp(&score).reverse()) {
+            Ok(index) => index,
+            Err(index) => index
+            
+        };
+
+        self.popup.insert_field(index, (score, item)); 
     }
 
     pub fn get_input_to_render (&self) -> &str {
@@ -47,7 +58,7 @@ impl SearchMenu {
     }
 
     pub fn get_list_items (& self) -> Vec<SearchItem> {
-        self.popup.get_list_items()
+        self.popup.get_list_items().iter().map(|(_, item)| item.clone()).collect()
      }
     
     pub fn traverse_items (&mut self, direction: Direction) {
