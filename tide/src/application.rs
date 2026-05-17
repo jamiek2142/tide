@@ -525,7 +525,9 @@ impl App {
                                 Style::default()
                             },
                         };
-                            
+                        
+                        // TODO: Create meta data view, and group by file path 
+                        // let text = k.metadata().unwrap_or_default().to_owned() + k.display();
                 
                         ListItem::new(k.display()).style(style)
                     })

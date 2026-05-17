@@ -87,6 +87,10 @@ impl SearchItem {
     pub fn item_type(&self) -> SearchItemType {
         self.item_type.clone()
     }
+
+    pub fn metadata (&self) -> Option<&str> {
+        self.metadata.as_deref()
+    }
 }
 
 impl Sink for LineCollector {
