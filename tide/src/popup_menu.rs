@@ -45,12 +45,23 @@ impl<T> PopupMenu<T> where T : Clone + PartialEq {
         self
    }
 
-    pub fn insert_field(&mut self, index : usize, field : T) {
+    pub fn insert_field(&mut self, index : usize, field : T, max_count : Option<usize>) {
         
         let was_empty = self.list.is_empty();
 
         self.list.insert(index, field); 
-       
+      
+        if let Some(max_count) = max_count {
+            self.list.truncate(max_count);
+
+            if let Some(index) = self.state.selected() {
+ 
+                if index >= self.list.len() {
+                    self.state.select(Some(self.list.len() - 1));
+                }
+            }
+        };
+
         if was_empty {
             self.state.select(Some(0));
         }

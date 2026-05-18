@@ -185,6 +185,7 @@ impl App {
         let target_path = self.shell.borrow().cwd().to_path_buf();
         self.change_dir(&target_path);
 
+
         while !self.exit {
             
             while let Ok(bytes) = self.rx.try_recv() {
@@ -207,9 +208,10 @@ impl App {
                         }
 
                         Some(fields)
-                    } else { None }}
-                {
-
+                    } else {
+                        None 
+                    }
+                } {
                     for (score, item) in fields {
                         popup.add_field(score, item);
                     }
@@ -494,7 +496,7 @@ impl App {
                 let frame_area = frame.area();
 
                 let popup_area_width  = frame_area.width/2;
-                let popup_area_height = frame_area.height/2;
+                let popup_area_height = (3 * frame_area.height)/4;
 
                 let popup_area_x = frame_area.x + (frame_area.width  - popup_area_width ) / 2 ;
                 let popup_area_y = frame_area.y + (frame_area.height - popup_area_height) / 2 ;
@@ -514,10 +516,10 @@ impl App {
                 let input_block  = Block::default().borders(Borders::BOTTOM | Borders::RIGHT | Borders::LEFT);
  
                 let popup_items = popup.get_list_items();
-                let popup_items : Vec<ListItem> = popup_items.iter()
-                    .map(|k| {
+                let popup_items : Vec<ListItem> = popup_items.iter().enumerate()
+                    .map(|(k, item)| {
 
-                        let style = match k.item_type() {
+                        let style = match item.item_type() {
                             SearchItemType::FILE => {
                                 Style::default()
                                     .fg(Color::Green)
@@ -535,8 +537,20 @@ impl App {
                         
                         // TODO: Create meta data view, and group by file path 
                         // let text = k.metadata().unwrap_or_default().to_owned() + k.display();
+                       
+                        let (metadata, line_num) = item.metadata(); 
+                    
+                        let mut metadata = metadata.to_owned();
+
+                        let max_chars = 20;
+                        let n = metadata.len().saturating_sub(max_chars);
+                        metadata.drain(0..n);
+
+                        let line_num = if let Some(line_num) = line_num { format!(":{}", line_num) } else { "".to_owned() };
+                       
+                        let text = format!("{:3}: {:10}{:5}  |  ", k + 1, metadata, line_num) + item.display(); 
                 
-                        ListItem::new(k.display()).style(style)
+                        ListItem::new(text).style(style)
                     })
                     .collect();
 

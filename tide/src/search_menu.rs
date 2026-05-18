@@ -44,8 +44,8 @@ impl SearchMenu {
             Err(index) => index
             
         };
-
-        self.popup.insert_field(index, (score, item)); 
+                
+        self.popup.insert_field(index, (score, item), Some(100)); 
     }
 
     pub fn get_input_to_render (&self) -> &str {

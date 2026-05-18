@@ -49,7 +49,7 @@ pub enum SearchItemType {
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct SearchItem {
     display  : String,
-    metadata : Option<String>,
+    metadata : (String, Option<u64>),
     item_type: SearchItemType
 }
 
@@ -71,11 +71,10 @@ pub struct SearchHandle {
 
 impl SearchItem {
 
-    pub fn new (search_text : &str, metadata : Option<&str>, item_type : SearchItemType) -> Self
-    {
+    pub fn new (search_text : &str, metadata : (&str, Option<u64>) , item_type : SearchItemType) -> Self {
         Self {
             display  : search_text.to_string(),
-            metadata : metadata.map(|text| text.to_string()),
+            metadata : (metadata.0.to_string(), metadata.1),
             item_type: item_type
         }
     }
@@ -88,8 +87,8 @@ impl SearchItem {
         self.item_type.clone()
     }
 
-    pub fn metadata (&self) -> Option<&str> {
-        self.metadata.as_deref()
+    pub fn metadata (&self) -> (&str, Option<u64>) {
+        (&self.metadata.0, self.metadata.1) 
     }
 }
 
@@ -100,9 +99,8 @@ impl Sink for LineCollector {
     fn matched (&mut self, _searcher : &Searcher, mat : &SinkMatch<'_>) -> Result<bool, io::Error> {
         
         let content = String::from_utf8_lossy(mat.bytes().trim_end());
-        let metadata = format!("{}:{}", self.path_str, mat.line_number().unwrap_or_default());
-
-        self.lines.push(SearchItem::new(&content, Some(&metadata), SearchItemType::TEXT));
+    
+        self.lines.push(SearchItem::new(&content, (&self.path_str, mat.line_number()), SearchItemType::TEXT));
 
         Ok(true)
     }
@@ -140,7 +138,7 @@ pub fn search (cwd : &Path, query : &str) -> SearchHandle {
                let _ = thread_local_tx.send(
                     SearchItem::new(
                     &path_str, 
-                    None, 
+                    (&path_str, None), 
                     SearchItemType::DIRECTORY
                     )
                 );
@@ -150,7 +148,7 @@ pub fn search (cwd : &Path, query : &str) -> SearchHandle {
                 let _ = thread_local_tx.send(
                     SearchItem::new(
                         &path_str, 
-                        None, 
+                        (&path_str, None), 
                         SearchItemType::FILE
                     )
                 );
