@@ -10,7 +10,7 @@
  * Crates
  *****************************************************/
 
-use crate::{search::SearchItem, search_menu::SearchMenu};
+use crate::search_menu::SearchMenu;
 use crate::popup_menu::PopupMenu;
 use crate::input::Input;
 use crate::shell::Shell;
@@ -18,7 +18,7 @@ use crate::file_system::FileTree;
 use crate::search::SearchItemType;
 
 use std::{ 
-    cell::RefCell, collections::HashMap, fs, io, path::PathBuf, rc::Rc, sync::mpsc, time::{
+    cell::RefCell, collections::HashMap, fs, io, path::PathBuf, rc::Rc, time::{
         Duration,
         Instant
     }
@@ -118,7 +118,6 @@ pub struct App {
     open_file : Option<PathBuf>,
     menu_screen : Option<MenuScreen>,
     last_scroll : Instant,
-    search_rx : Option<mpsc::Receiver<(u32, SearchItem)>>
 }
 
 /*****************************************************
@@ -178,7 +177,6 @@ impl App {
             open_file : None,
             menu_screen : None,
             last_scroll : Instant::now(),
-            search_rx : None
        }
     }
 
@@ -193,19 +191,28 @@ impl App {
                 let mut text = text.lines().map(String::from).collect();
                 self.output.append(&mut text);
             }
- 
-            if let Some(search_rx) = &mut self.search_rx {
-                
-                while let Ok((score, item)) = search_rx.try_recv() {
-                    
-                    if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
-                       
-                        if score > 0 
-                        {
-                            popup.add_field(score, item);
+
+            if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
+
+                if let Some(fields) = { 
+                    if let Some(search_rx) = popup.get_rx() {    
+                        let mut fields = Vec::new();
+                        while let Ok((score, item)) = search_rx.try_recv() {
+                                      
+                            if score > 0 
+                            {
+                                fields.push((score, item));
+                            }
                         }
+
+                        Some(fields)
+                    } else { None }}
+                {
+
+                    for (score, item) in fields {
+                        popup.add_field(score, item);
                     }
-                }
+                }; 
             }
             
             terminal.draw(|frame| self.draw(frame).expect("Failed to draw frame") )?;
@@ -761,6 +768,12 @@ impl App {
                     Focus::SHELL |
                     Focus::FILES  => self.exit(),
                     Focus::SEARCH => {
+                        
+                        // Cleanup after leaving search
+                        if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
+                            popup.cleanup();
+                        };
+
                         self.menu_screen = None;
                         self.focus       = Focus::FILES;
                     },  
@@ -866,7 +879,7 @@ impl App {
                                             .to_path_buf();
 
                         if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
-                            self.search_rx = Some(popup.search(&cwd));
+                            popup.search(&cwd);
                         } 
                     },
                     Focus::FILES  => {

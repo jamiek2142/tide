@@ -57,8 +57,6 @@ impl<T> PopupMenu<T> where T : Clone + PartialEq {
 
     }
 
-    
-
    pub fn reset (&mut self) {
         self.list.clear();
         self.state.select(None);

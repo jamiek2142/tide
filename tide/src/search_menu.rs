@@ -12,7 +12,7 @@ use crate::{application::Direction};
 use crate::input::Input;
 use crate::popup_menu::PopupMenu;
 
-use crate::search::SearchItem;
+use crate::search::{SearchItem, SearchHandle};
 use crate::search;
 use ratatui::widgets::{ListState};
 
@@ -22,12 +22,11 @@ use crossterm::event::Event;
  * Types
  *****************************************************/
 
-
-
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct SearchMenu {
-    input : Input,
-    popup : PopupMenu<(u32, SearchItem)>
+    input   : Input,
+    popup   : PopupMenu<(u32, SearchItem)>,
+    handle  : Option<SearchHandle>
 }
 
 /*****************************************************
@@ -65,13 +64,28 @@ impl SearchMenu {
         self.popup.traverse_items(direction)       
     }
 
-    pub fn search (&mut self, cwd : &Path) -> Receiver<(u32, SearchItem)> {
+    pub fn get_rx (&mut self) -> Option<&mut Receiver<(u32, SearchItem)>> {
+        if let Some(handle) = &mut self.handle { Some(&mut handle.rx) } else { None } 
+    }
+
+    pub fn cleanup (&mut self) {
         
         self.popup.reset();
 
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.t1.join().unwrap();
+            let _ = handle.t2.join().unwrap();
+        }
+
+    }
+
+    pub fn search (&mut self, cwd : &Path) {
+        
+        self.cleanup();
+        
         let query= self.input.get_input_to_render();
         
-        search::search(cwd,query) 
+        self.handle = Some(search::search(cwd,query));
     }
 
     pub fn handle_event(&mut self, event : &Event)

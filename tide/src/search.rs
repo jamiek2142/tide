@@ -28,17 +28,10 @@ use nucleo::{
 use rayon::prelude::*;
 
 use std::{
-    io,
-    path::{
-        Path
-    },
-    thread,
-    sync::{
-        mpsc::{
+    io, path::Path, sync::mpsc::{
             self, 
             Receiver
-        }
-    }
+        }, thread::{self, JoinHandle}
 };
 
 /*****************************************************
@@ -63,6 +56,13 @@ pub struct SearchItem {
 struct LineCollector {
     path_str : String,
     lines    : Vec<SearchItem>
+}
+
+
+pub struct SearchHandle {
+    pub rx : Receiver<(u32, SearchItem)>,
+    pub t1 : JoinHandle<()>,
+    pub t2 : JoinHandle<()>
 }
 
 /*****************************************************
@@ -112,13 +112,12 @@ impl Sink for LineCollector {
  * Function Definitions 
  *****************************************************/
 
-pub fn search (cwd : &Path, query : &str) -> Receiver<(u32, SearchItem)> {
-    
-        
+pub fn search (cwd : &Path, query : &str) -> SearchHandle {
+         
     let (build_tx, build_rx) = crossbeam_channel::bounded(2048);
     let cwd = cwd.to_path_buf();
     
-    thread::spawn(move || {
+    let t1 = thread::spawn(move || {
         let walker = WalkBuilder::new(&cwd).build_parallel();
 
         walker.run(move || {
@@ -180,7 +179,7 @@ pub fn search (cwd : &Path, query : &str) -> Receiver<(u32, SearchItem)> {
 
     let query = query.to_string();
     
-    rayon::spawn(move || {
+    let t2 = thread::spawn(move || {
         let query = nucleo::pattern::Pattern::parse(
             &query,
             nucleo::pattern::CaseMatching::Ignore,
@@ -198,6 +197,6 @@ pub fn search (cwd : &Path, query : &str) -> Receiver<(u32, SearchItem)> {
         });    
     });
 
-    rx
+    SearchHandle { rx, t1, t2 } 
 }
 
