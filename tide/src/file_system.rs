@@ -45,8 +45,8 @@ pub struct FileTree {
  *****************************************************/
 
 fn is_dotfile(entry: &DirEntry) -> bool {
-    // TODO: Enable/disable dotfiles.
-
+    
+    // TODO: Enable/disable dotfiles from configuration.
     for component in entry.path().iter() {
         if component.to_string_lossy().starts_with(".") {
             return true;
