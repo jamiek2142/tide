@@ -40,31 +40,15 @@ use crossbeam_channel::{
 };
 
 use ratatui::{
-    DefaultTerminal, 
-    Frame,
-    layout::{
-        Margin, 
-        Constraint, 
-        Layout, 
-        Position, 
-        Rect, 
-        Spacing
-    },
-    style::{
+    DefaultTerminal, Frame, layout::{
+        Constraint, Layout, Margin, Position, Rect, Spacing
+    }, style::{
         Color, 
         Modifier, 
         Style
+    }, symbols::merge::MergeStrategy, text::Text, widgets::{
+        Block, Borders, Clear, Gauge, List, ListItem, Paragraph
     },
-    text::Text,
-    widgets::{
-        Block, 
-        Borders, 
-        Clear, 
-        List, 
-        ListItem, 
-        Paragraph
-    },
-    symbols::merge::MergeStrategy
 };
 
 use ratatui_code_editor::{
@@ -570,26 +554,30 @@ impl App {
 
                 frame.render_widget(Clear, popup_area);                
                
-                let max_dots = 10;
-
-                let n = if self.last_update.elapsed() > Duration::from_secs(max_dots) {
-                            self.last_update = Instant::now(); max_dots as usize
-                        } else { 
-                            self.last_update.elapsed().as_secs() as usize
-                        };  
-                let dots = ".".repeat(n);
-
                 let title = format!("{} {} items ", if popup.running() { "Searching" } else { "Searched" }, popup.get_n_items() );
 
                 let title = Paragraph::new(title).block(title_block).right_aligned();                
                 frame.render_widget(title, title_area);
                
-                let text = if popup.running() { "  ".to_owned() + &dots } else {" > ".to_owned() + popup.get_input_to_render()};
+                if popup.running() {
+                    let refresh_time = 2.0;
 
-                let input = Paragraph::new(text).block(input_block);                   
+										let elapsed_time = self.last_update.elapsed().as_secs_f64();
+
+                    let ratio = if elapsed_time > refresh_time {
+                            self.last_update = Instant::now(); 1.0 
+                        } else { 
+                            elapsed_time / refresh_time 
+                    };
+	
+                    let gauge = Gauge::default().block(input_block).percent((100.0 * ratio) as u16).label(" Search in progress");
+										frame.render_widget(gauge, input_area);
+                } else {
+                    let input = Paragraph::new(" > ".to_owned() + popup.get_input_to_render()).block(input_block);                   
                 
-            
-                frame.render_widget(input, input_area);
+                    frame.render_widget(input, input_area);
+                }                
+
                 frame.render_stateful_widget(popup_list, search_area, popup.get_state());
             },
 
