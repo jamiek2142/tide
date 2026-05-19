@@ -118,6 +118,7 @@ pub struct App {
     open_file : Option<PathBuf>,
     menu_screen : Option<MenuScreen>,
     last_scroll : Instant,
+    last_update : Instant, 
 }
 
 /*****************************************************
@@ -177,6 +178,7 @@ impl App {
             open_file : None,
             menu_screen : None,
             last_scroll : Instant::now(),
+            last_update : Instant::now()
        }
     }
 
@@ -455,7 +457,7 @@ impl App {
         
         frame.render_widget(output, shell_output); 
 
-        // Render the popup menu if set.
+        // Render any popup menus
         match &mut self.menu_screen {
 
             Some(MenuScreen::EDITOR(popup)) => {
@@ -503,16 +505,18 @@ impl App {
 
                 let popup_area = Rect::new(popup_area_x, popup_area_y, popup_area_width, popup_area_height);
                 
-                let [search_area, input_area] = 
+                let [title_area, search_area, input_area] = 
                     Layout::vertical([
+                        Constraint::Min(3),
                         Constraint::Fill(24), 
                         Constraint::Min(1)
                     ]).split(popup_area)[..] 
                     else {
                         todo!() 
-                    };  
-                
-                let search_block = Block::default().borders(Borders::TOP | Borders::RIGHT | Borders::LEFT);
+                    };   
+               
+                let title_block = Block::default().borders(Borders::TOP | Borders::RIGHT | Borders::LEFT);
+                let search_block = Block::default().borders( Borders::RIGHT | Borders::LEFT);
                 let input_block  = Block::default().borders(Borders::BOTTOM | Borders::RIGHT | Borders::LEFT);
  
                 let popup_items = popup.get_list_items();
@@ -548,7 +552,7 @@ impl App {
 
                         let line_num = if let Some(line_num) = line_num { format!(":{}", line_num) } else { "".to_owned() };
                        
-                        let text = format!("{:3}: {:10}{:5}  |  ", k + 1, metadata, line_num) + item.display(); 
+                        let text = format!("{:5}: {:10}{:5}  |  ", k + 1, metadata, line_num) + item.display(); 
                 
                         ListItem::new(text).style(style)
                     })
@@ -564,12 +568,27 @@ impl App {
                     )
                     .highlight_symbol(">> ");
 
-                frame.render_widget(Clear, popup_area);
+                frame.render_widget(Clear, popup_area);                
                
-                let text = " > ".to_string() + popup.get_input_to_render();
+                let max_dots = 10;
+
+                let n = if self.last_update.elapsed() > Duration::from_secs(max_dots) {
+                            self.last_update = Instant::now(); max_dots as usize
+                        } else { 
+                            self.last_update.elapsed().as_secs() as usize
+                        };  
+                let dots = ".".repeat(n);
+
+                let title = format!("{} {} items ", if popup.running() { "Searching" } else { "Searched" }, popup.get_n_items() );
+
+                let title = Paragraph::new(title).block(title_block).right_aligned();                
+                frame.render_widget(title, title_area);
+               
+                let text = if popup.running() { "  ".to_owned() + &dots } else {" > ".to_owned() + popup.get_input_to_render()};
 
                 let input = Paragraph::new(text).block(input_block);                   
                 
+            
                 frame.render_widget(input, input_area);
                 frame.render_stateful_widget(popup_list, search_area, popup.get_state());
             },

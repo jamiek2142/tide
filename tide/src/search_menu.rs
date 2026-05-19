@@ -26,7 +26,8 @@ use crossterm::event::Event;
 pub struct SearchMenu {
     input   : Input,
     popup   : PopupMenu<(u32, SearchItem)>,
-    handle  : Option<SearchHandle>
+    handle  : Option<SearchHandle>,
+    n_items : usize
 }
 
 /*****************************************************
@@ -36,7 +37,9 @@ pub struct SearchMenu {
 impl SearchMenu {
 
     pub fn add_field (&mut self, score : u32, item : SearchItem) {
-        
+       
+        self.n_items += 1;
+
         let index = match self.popup
             .get_list_items()
             .binary_search_by(|elem| elem.0.cmp(&score).reverse()) {
@@ -45,7 +48,7 @@ impl SearchMenu {
             
         };
                 
-        self.popup.insert_field(index, (score, item), Some(100)); 
+        self.popup.insert_field(index, (score, item), Some(1000)); 
     }
 
     pub fn get_input_to_render (&self) -> &str {
@@ -68,10 +71,24 @@ impl SearchMenu {
         if let Some(handle) = &mut self.handle { Some(&mut handle.rx) } else { None } 
     }
 
+    pub fn running (&self) -> bool {
+        
+        if let Some(handle) = & self.handle {
+            !(handle.t1.is_finished() && handle.t2.is_finished())
+        } else {
+            false
+        }
+    }
+    
+    pub fn get_n_items(&self) -> usize {
+        self.n_items
+    }
+
     pub fn cleanup (&mut self) {
         
         self.popup.reset();
-
+        self.n_items = 0; 
+    
         if let Some(handle) = self.handle.take() {
             let _ = handle.t1.join().unwrap();
             let _ = handle.t2.join().unwrap();
@@ -80,7 +97,10 @@ impl SearchMenu {
     }
 
     pub fn search (&mut self, cwd : &Path) {
-        
+       
+        if self.running() {
+            return
+        }
         self.cleanup();
         
         let query= self.input.get_input_to_render();
@@ -90,6 +110,10 @@ impl SearchMenu {
 
     pub fn handle_event(&mut self, event : &Event)
     {
+        if self.running() {
+            return;
+        }
+
         self.input.handle_event(event);
     }
 }
