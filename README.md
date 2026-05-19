@@ -6,7 +6,8 @@ A lightweight terminal-based IDE built using Ratatui in Rust.
 
 ## Features
 
-- First-class mouse support
+- Mouse support
+- Fuzzy search
 - Directory navigation
 - Shell integration  
 
