@@ -48,7 +48,7 @@ use ratatui::{
         Style
     }, symbols::merge::MergeStrategy, text::Text, widgets::{
         Block, Borders, Clear, Gauge, List, ListItem, Paragraph
-    },
+    }
 };
 
 use ratatui_code_editor::{
@@ -408,12 +408,22 @@ impl App {
                 }
             }, 
             None => {
-
-                let help = vec![("Shift + Tab", "Cycle panes"), 
+                
+                let help = match &self.focus {
+                                            Focus::FILES => {
+                                              vec![("Tab", "Expand directory | Open file"),   
+                                                   ("Enter", "Change directory | Open file"),
+                                                   ("Shift + Tab", "Cycle panes"), 
                                                    ("Esc", "Exit focus"), 
                                                    ("Up", "Scroll up"), 
                                                    ("Down", "Scroll down"),
-                                                   ("Forward Slash", "Search current directory")];
+                                                   ("Forward Slash", "Search current directory")]
+                                            },
+                                            _ => {
+                                                vec![]
+                                            },
+
+                                          };
 
                 let longest = help.iter()
                                         .max_by_key(|(keybinding, _)| keybinding.len())
@@ -569,8 +579,12 @@ impl App {
                         } else { 
                             elapsed_time / refresh_time 
                     };
-	
-                    let gauge = Gauge::default().block(input_block).percent((100.0 * ratio) as u16).label(" Search in progress");
+	                  
+    
+                    // TODO: Gauge rendering will be fixed when PR#2548 is merged and released
+                    let percent = (100.0 * ratio) as u16;
+
+                    let gauge = Gauge::default().block(input_block).percent(percent).label(" Searching");
 										frame.render_widget(gauge, input_area);
                 } else {
                     let input = Paragraph::new(" > ".to_owned() + popup.get_input_to_render()).block(input_block);                   
@@ -646,13 +660,6 @@ impl App {
        
         self.open_file = Some(target_path.clone());
         self.editor    = Some(editor);
-    }
-
-    fn handle_file_key_press (&mut self) {
-
-        if ! self.file_system.toggle_dir() {
-            self.focus = Focus::EDITOR(EditorFocus::MAIN);
-        }
     }
 
     fn execute(&mut self, command : String) {
@@ -870,6 +877,13 @@ impl App {
                 }
             },
 
+            KeyCode::Tab if self.focus == Focus::FILES => {
+
+                if ! self.file_system.toggle_dir(true) {
+                    self.focus = Focus::EDITOR(EditorFocus::MAIN);
+                }
+            }
+
             KeyCode::BackTab => {
                 
                 match self.focus {
@@ -903,7 +917,9 @@ impl App {
                         } 
                     },
                     Focus::FILES  => {
-                        self.handle_file_key_press(); 
+                        if ! self.file_system.toggle_dir(false) {
+                            self.focus = Focus::EDITOR(EditorFocus::MAIN);
+                        }
                     },
                     Focus::SHELL  => {
                         self.input.handle_event(&Event::Key(key_event));

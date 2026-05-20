@@ -174,7 +174,7 @@ impl FileTree {
         
             if self.file_entries[k].is_dir {
                 
-                self.toggle_dir();
+                self.toggle_dir(false);
 
                 None
             } else {
@@ -207,7 +207,7 @@ impl FileTree {
         self.current_path = path;
     }
 
-    pub fn toggle_dir (&mut self) -> bool {
+    pub fn toggle_dir (&mut self,  change_dir: bool) -> bool {
 
         let Some(index) = self.list_state.selected() else {
             return false;
@@ -221,8 +221,21 @@ impl FileTree {
             
             self.shell.borrow_mut().set_cwd(target_path.clone());
             self.change_dir(target_path);
+        } 
+
+        // If change to the required path.
+        if change_dir && self.file_entries[index].is_dir {
+            
+            let target_path = &self.file_entries[index].path;
+            
+            let target_path = std::fs::canonicalize(target_path).unwrap_or(self.current_path.clone());
+
+            self.change_dir(target_path);
+
+            return true; 
         }
 
+        // Return if this wasn't a 
         if ! self.file_entries[index].is_dir {
             return false;
         }
