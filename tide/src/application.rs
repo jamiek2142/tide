@@ -10,7 +10,7 @@
  * Crates
  *****************************************************/
 
-use crate::search_menu::SearchMenu;
+use crate::search::menu::SearchMenu;
 use crate::popup_menu::PopupMenu;
 use crate::input::Input;
 use crate::shell::Shell;

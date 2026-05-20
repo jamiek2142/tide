@@ -2,6 +2,8 @@
  * Copyright 2026, Tide Project
  *****************************************************/
 
+pub mod menu;
+
 /*****************************************************
  * Crates 
  *****************************************************/
@@ -169,8 +171,8 @@ pub fn search (cwd : &Path, query : &str) -> SearchHandle {
             }
 
             ignore::WalkState::Continue
-        })
-    });
+            })
+        });
     });
 
     let (tx, rx) = mpsc::channel();

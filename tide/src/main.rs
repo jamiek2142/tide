@@ -11,18 +11,29 @@ mod shell;
 mod file_system;
 mod application;
 mod popup_menu;
-mod search_menu;
 mod search;
 
 /*****************************************************
  * Crates
  *****************************************************/
 
-use crossterm::{cursor::SetCursorStyle, event::{DisableMouseCapture, EnableMouseCapture}};
+use crossterm::{
+    cursor::SetCursorStyle, 
+    event::{
+        DisableMouseCapture, 
+        EnableMouseCapture
+    }
+};
 
 use crate::application::App;
 
-use std::{io::{self, stdout}, panic};
+use std::{
+    io::{
+        self, 
+        stdout
+    }, 
+    panic
+    };
 
 /*****************************************************
  * Main Entry Point
