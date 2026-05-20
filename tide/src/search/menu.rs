@@ -61,7 +61,12 @@ impl SearchMenu {
 
     pub fn get_list_items (& self) -> Vec<SearchItem> {
         self.popup.get_list_items().iter().map(|(_, item)| item.clone()).collect()
-     }
+    }
+
+    pub fn get_selected_item(&self) -> Option<&SearchItem> {
+        
+        self.popup.get_selected().map(|(_,item)| item)
+    }
     
     pub fn traverse_items (&mut self, direction: Direction) {
         self.popup.traverse_items(direction)       

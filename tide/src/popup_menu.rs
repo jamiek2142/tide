@@ -81,6 +81,15 @@ impl<T> PopupMenu<T> where T : Clone + PartialEq {
         &self.list
    }
 
+   pub fn get_selected (&self) -> Option<&T> {
+        
+        let Some(index) = self.state.selected() else {
+            return None;
+        };
+
+        Some(&self.list[index])
+   }
+
    pub fn selected (&self, field : T) -> bool {
         
        let Some(index) = self.state.selected() else {

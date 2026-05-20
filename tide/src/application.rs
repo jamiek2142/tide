@@ -884,6 +884,37 @@ impl App {
                 }
             }
 
+            KeyCode::Tab if self.focus == Focus::SEARCH => {
+               
+                let mut close_menu = false;
+
+                if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
+                   
+                    let Some(item) = popup.get_selected_item() else {
+                        return
+                    };
+                    
+                    // TODO: Path returns string, should return &Path.  
+                    let path = PathBuf::from(item.metadata().0);
+ 
+                    if ! path.is_dir() {
+
+                        // TODO: Open file at line specified by meta data
+                        self.open_file(&path);
+                        
+                        close_menu = true;
+                    }
+                    
+                   
+                }
+                
+                if close_menu {
+
+                    self.focus = Focus::EDITOR(EditorFocus::MAIN); 
+                    self.menu_screen = None;
+                }
+            }
+
             KeyCode::BackTab => {
                 
                 match self.focus {
