@@ -410,7 +410,7 @@ impl App {
             None => {
                 
                 let help = match &self.focus {
-                                            Focus::FILES => {
+                                            Focus::FILES | Focus::SEARCH => {
                                               vec![("Tab", "Expand directory | Open file"),   
                                                    ("Enter", "Change directory | Open file"),
                                                    ("Shift + Tab", "Cycle panes"), 
