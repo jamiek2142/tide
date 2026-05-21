@@ -425,6 +425,7 @@ impl App {
                                             },
 
                                           };
+                let len = help.len().try_into().unwrap_or_default();
 
                 let longest = help.iter()
                                         .max_by_key(|(keybinding, _)| keybinding.len())
@@ -441,11 +442,12 @@ impl App {
                                     help_text
                                 ).collect::<Vec<_>>().join("\n");
 
+
                 let text = Paragraph::new(help)
                             .style(Style::default().fg(Color::DarkGray));
                 let area =  editor_area.centered(
                                                 Constraint::Length(text.clone().line_width() as u16),
-                                                Constraint::Length(4));
+                                                Constraint::Length(len));
                 frame.render_widget(text, area);
             }
         }
@@ -627,9 +629,7 @@ impl App {
     }
 
     fn change_dir(&mut self, target_path: &PathBuf) {
-       
-        // TODO: Handle invalid paths. 
-        
+              
         let target_path = std::fs::canonicalize(&target_path).unwrap_or(self.shell.borrow_mut().cwd().to_path_buf());
 
         self.shell.borrow_mut().set_cwd(target_path.clone());
