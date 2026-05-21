@@ -166,6 +166,17 @@ impl FileTree {
             Some(self.file_entries[k].path.clone())
         }
     }
+    
+    pub fn get_selected_dir (&self) -> Option<&Path> {
+        
+        let Some(selected) = self.list_state.selected() else { return None; };
+
+        if self.file_entries[selected].is_dir {
+            Some(&self.file_entries[selected].path)
+        } else {
+            None
+        }
+    }
 
     pub fn select_entry (&mut self, k : usize) -> Option<PathBuf> {
        
@@ -186,13 +197,18 @@ impl FileTree {
     }
 
 
-    pub fn change_dir_at_index (&mut self, k : usize) {
+    pub fn get_dir_at_index (&mut self, k : usize) -> Option<&Path> {
 
         if k < self.file_entries.len() {
 
             if self.file_entries[k].is_dir {
-                self.change_dir(self.file_entries[k].path.clone());
+
+                Some(&self.file_entries[k].path)
+            } else {
+                 None
             }
+        } else {
+            None
         }
             
     }

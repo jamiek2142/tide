@@ -57,7 +57,8 @@ use ratatui_code_editor::{
     }, 
     theme::{
         vesper
-    }
+    },
+    actions::MoveDown
 };
 
 use ansi_to_tui::IntoText as _;
@@ -743,7 +744,13 @@ impl App {
  
                     let k = (y - OFFSET_TO_FIRST_ENTRY) as usize;
 
-                    self.file_system.change_dir_at_index(k);
+                    let Some(dir) = self.file_system.get_dir_at_index(k) else {
+                        return;
+                    };
+
+                    let dir = dir.to_path_buf();
+
+                    self.change_dir(&dir);
                 }
 
             }
@@ -878,31 +885,38 @@ impl App {
             },
 
             KeyCode::Tab if self.focus == Focus::FILES => {
+            
+               let Some(selected) = self.file_system.get_selected_dir() else {
+                   return;
+               };
+               let selected = selected.to_path_buf();
 
-                if ! self.file_system.toggle_dir(true) {
-                    self.focus = Focus::EDITOR(EditorFocus::MAIN);
-                }
+               self.change_dir(&selected); 
             }
 
             KeyCode::Tab if self.focus == Focus::SEARCH => {
                
                 let mut close_menu = false;
-
+                let mut line_num    = 0;
                 if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
                    
                     let Some(item) = popup.get_selected_item() else {
                         return
                     };
                     
-                    // TODO: Path returns string, should return &Path.  
+                    // TODO: Path returns string, should return &Path. This is pretty horrible logic. 
                     let path = PathBuf::from(item.metadata().0);
  
                     if ! path.is_dir() {
 
-                        // TODO: Open file at line specified by meta data
+                        let Some(line) = item.metadata().1 else {
+                            return;
+                        };
+
                         self.open_file(&path);
-                        
+  
                         close_menu = true;
+                        line_num = line - 1;
                     }
                     
                    
@@ -912,6 +926,17 @@ impl App {
 
                     self.focus = Focus::EDITOR(EditorFocus::MAIN); 
                     self.menu_screen = None;
+
+                    if let Some(editor) = &mut self.editor 
+                    {                            
+                        for _ in 0..line_num
+                        {
+                                editor.apply(MoveDown{shift : false }); 
+                        }
+                        
+                        // Force editor refresh.
+                        editor.focus(&editor_area);
+                    }
                 }
             }
 
