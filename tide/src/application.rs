@@ -18,7 +18,16 @@ use crate::file_system::FileTree;
 use crate::search::SearchItemType;
 
 use std::{ 
-    cell::RefCell, collections::HashMap, fs, io, path::PathBuf, rc::Rc, time::{
+    cell::RefCell, 
+    collections::HashMap, 
+    fs, 
+    io, 
+    path::{
+        Path, 
+        PathBuf
+    }, 
+    rc::Rc, 
+    time::{
         Duration,
         Instant
     }
@@ -40,14 +49,30 @@ use crossbeam_channel::{
 };
 
 use ratatui::{
-    DefaultTerminal, Frame, layout::{
-        Constraint, Layout, Margin, Position, Rect, Spacing
+    DefaultTerminal, 
+    Frame, 
+    layout::{
+        Constraint, 
+        Layout, 
+        Margin, 
+        Position, 
+        Rect, 
+        Spacing
     }, style::{
         Color, 
         Modifier, 
         Style
-    }, symbols::merge::MergeStrategy, text::Text, widgets::{
-        Block, Borders, Clear, Gauge, List, ListItem, Paragraph
+    }, 
+    symbols::merge::MergeStrategy, 
+    text::Text,
+    widgets::{
+        Block, 
+        Borders, 
+        Clear, 
+        Gauge, 
+        List, 
+        ListItem, 
+        Paragraph
     }
 };
 
@@ -628,9 +653,9 @@ impl App {
         Ok(())
     }
 
-    fn change_dir(&mut self, target_path: &PathBuf) {
+    fn change_dir(&mut self, target_path: &Path) {
               
-        let target_path = std::fs::canonicalize(&target_path).unwrap_or(self.shell.borrow_mut().cwd().to_path_buf());
+        let target_path = std::fs::canonicalize(target_path).unwrap_or(self.shell.borrow_mut().cwd().to_path_buf());
 
         self.shell.borrow_mut().set_cwd(target_path.clone());
 
@@ -897,9 +922,9 @@ impl App {
 
             KeyCode::Tab if self.focus == Focus::SEARCH => {
                
-                let mut close_menu = false;
+                               
                 let mut line_num    = 0;
-                if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
+                let new_focus = if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
                    
                     let Some(item) = popup.get_selected_item() else {
                         return
@@ -908,24 +933,29 @@ impl App {
                     // TODO: Path returns string, should return &Path. This is pretty horrible logic. 
                     let path = PathBuf::from(item.metadata().0);
  
-                    if ! path.is_dir() {
+                    if path.is_dir() { 
+                        
+                        self.change_dir(&path);
 
-                        let Some(line) = item.metadata().1 else {
-                            return;
-                        };
+                        Focus::FILES                        
+
+                    } else {
+
+                        line_num = item.metadata().1.unwrap_or(1);
 
                         self.open_file(&path);
   
-                        close_menu = true;
-                        line_num = line - 1;
+                        Focus::EDITOR(EditorFocus::MAIN)
                     }
                     
                    
-                }
+                } else { 
+                    Focus::SEARCH
+                };   
                 
-                if close_menu {
+                if self.focus != new_focus {
 
-                    self.focus = Focus::EDITOR(EditorFocus::MAIN); 
+                    self.focus = new_focus;
                     self.menu_screen = None;
 
                     if let Some(editor) = &mut self.editor 
@@ -1021,7 +1051,9 @@ impl App {
                 }
             },
 
-            KeyCode::Char('/') => {     
+            KeyCode::Char('/') => {   
+
+                // TODO: Apply some context about what we should search based on previous focus
                 self.menu_screen = Some(MenuScreen::SEARCH(SearchMenu::default()));
                 self.focus       = Focus::SEARCH; 
             }
