@@ -539,15 +539,16 @@ impl App {
                        
                         let (metadata, line_num) = item.metadata(); 
                     
-                        let mut metadata = metadata.to_owned();
+                        let mut metadata = metadata.to_string_lossy().to_string();
 
-                        let max_chars = 20;
+                        let max_chars = 80;
+                        
                         let n = metadata.len().saturating_sub(max_chars);
                         metadata.drain(0..n);
 
                         let line_num = if let Some(line_num) = line_num { format!(":{}", line_num) } else { "".to_owned() };
                        
-                        let text = format!("{:5}: {:10}{:5}  |  ", k + 1, metadata, line_num) + item.display(); 
+                        let text = format!("{:}{:5}\n        ", metadata, line_num) + item.display(); 
                 
                         ListItem::new(text).style(style)
                     })

@@ -30,7 +30,12 @@ use nucleo::{
 use rayon::prelude::*;
 
 use std::{
-    io, path::Path, sync::mpsc::{
+    io, 
+    path::{
+        Path, 
+        PathBuf,
+    },
+    sync::mpsc::{
             self, 
             Receiver
         }, thread::{self, JoinHandle}
@@ -51,12 +56,12 @@ pub enum SearchItemType {
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct SearchItem {
     display  : String,
-    metadata : (String, Option<u64>),
+    metadata : (PathBuf, Option<u64>),
     item_type: SearchItemType
 }
 
 struct LineCollector {
-    path_str : String,
+    path     : PathBuf,
     lines    : Vec<SearchItem>
 }
 
@@ -73,10 +78,10 @@ pub struct SearchHandle {
 
 impl SearchItem {
 
-    pub fn new (search_text : &str, metadata : (&str, Option<u64>) , item_type : SearchItemType) -> Self {
+    pub fn new (search_text : &str, metadata : (&Path, Option<u64>) , item_type : SearchItemType) -> Self {
         Self {
             display  : search_text.to_string(),
-            metadata : (metadata.0.to_string(), metadata.1),
+            metadata : (metadata.0.to_path_buf(), metadata.1),
             item_type: item_type
         }
     }
@@ -89,7 +94,7 @@ impl SearchItem {
         self.item_type.clone()
     }
 
-    pub fn metadata (&self) -> (&str, Option<u64>) {
+    pub fn metadata (&self) -> (&Path, Option<u64>) {
         (&self.metadata.0, self.metadata.1) 
     }
 }
@@ -102,7 +107,7 @@ impl Sink for LineCollector {
         
         let content = String::from_utf8_lossy(mat.bytes().trim_end());
     
-        self.lines.push(SearchItem::new(&content, (&self.path_str, mat.line_number()), SearchItemType::TEXT));
+        self.lines.push(SearchItem::new(&content, (&self.path, mat.line_number()), SearchItemType::TEXT));
 
         Ok(true)
     }
@@ -140,7 +145,7 @@ pub fn search (cwd : &Path, query : &str) -> SearchHandle {
                let _ = thread_local_tx.send(
                     SearchItem::new(
                     &path_str, 
-                    (&path_str, None), 
+                    (&path, None), 
                     SearchItemType::DIRECTORY
                     )
                 );
@@ -150,13 +155,13 @@ pub fn search (cwd : &Path, query : &str) -> SearchHandle {
                 let _ = thread_local_tx.send(
                     SearchItem::new(
                         &path_str, 
-                        (&path_str, None), 
+                        (&path, None), 
                         SearchItemType::FILE
                     )
                 );
 
                 let mut collector = LineCollector {
-                    path_str: path_str.clone(),
+                    path: path.to_path_buf(),
                     lines: Vec::new(),
                 };
 
