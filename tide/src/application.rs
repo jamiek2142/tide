@@ -398,7 +398,7 @@ impl App {
         }
  
         // Render text editor and shell output. TODO: cleanup.
-        match &self.editor {
+       match &self.editor {
             Some (editor) => {
                 frame.render_widget(editor, editor_area);
            
@@ -411,9 +411,9 @@ impl App {
             None => {
                 
                 let help = match &self.focus {
-                                            Focus::FILES | Focus::SEARCH => {
-                                              vec![("Tab", "Expand directory | Open file"),   
-                                                   ("Enter", "Change directory | Open file"),
+                                            Focus::FILES | Focus::SEARCH | Focus::SHELL => {
+                                              vec![("Tab", "Change directory"),   
+                                                   ("Enter", "Expand directory"),
                                                    ("Shift + Tab", "Cycle panes"), 
                                                    ("Esc", "Exit focus"), 
                                                    ("Up", "Scroll up"), 
@@ -427,13 +427,12 @@ impl App {
                                           };
                 let len = help.len().try_into().unwrap_or_default();
 
-                let longest = help.iter()
+                if let Some(longest) = help.iter()
                                         .max_by_key(|(keybinding, _)| keybinding.len())
-                                        .unwrap()
-                                        .0
-                                        .len();
+                {
+                    let longest = longest.0.len();
 
-                let help = help
+                    let help = help
                             .iter()
                             .map(|(keybinding, help_text )| 
                                     keybinding.to_string() + 
@@ -443,12 +442,13 @@ impl App {
                                 ).collect::<Vec<_>>().join("\n");
 
 
-                let text = Paragraph::new(help)
+                    let text = Paragraph::new(help)
                             .style(Style::default().fg(Color::DarkGray));
-                let area =  editor_area.centered(
+                    let area =  editor_area.centered(
                                                 Constraint::Length(text.clone().line_width() as u16),
                                                 Constraint::Length(len));
-                frame.render_widget(text, area);
+                    frame.render_widget(text, area);
+                }
             }
         }
         
@@ -518,7 +518,7 @@ impl App {
  
                 let popup_items = popup.get_list_items();
                 let popup_items : Vec<ListItem> = popup_items.iter().enumerate()
-                    .map(|(k, item)| {
+                    .map(|(_, item)| {
 
                         let style = match item.item_type() {
                             SearchItemType::FILE => {
