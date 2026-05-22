@@ -47,6 +47,7 @@ fn main() -> io::Result<()> {
         let _ = crossterm::execute!(stdout(), DisableMouseCapture);
         default_hook(panic_info);
     }));
+    
     let _ = crossterm::execute!(stdout(), EnableMouseCapture);
     let _ = crossterm::execute!(stdout(), SetCursorStyle::BlinkingBar);
 

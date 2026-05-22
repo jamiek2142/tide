@@ -43,11 +43,6 @@ use crossterm::event::{
         MouseEventKind
     };
 
-use crossbeam_channel::{
-    Receiver, 
-    unbounded
-};
-
 use ratatui::{
     DefaultTerminal, 
     Frame, 
@@ -122,7 +117,6 @@ pub struct App {
     shell       : Rc<RefCell<Shell>>,
     exit        : bool,
     output      : Vec<String>,
-    rx          : Receiver<Vec<u8>>, // TODO: Move into shell.rs 
     focus       : Focus,
     editor      : Option<Editor>,
     open_file   : Option<PathBuf>, // TODO: Move into editor wrapper struct. 
@@ -172,9 +166,8 @@ impl From<MouseEventKind> for Direction {
 
 impl App {
     pub fn new() -> Self {
-        let (tx, rx) = unbounded::<Vec<u8>>();
-        
-        let shell = Rc::new(RefCell::new(Shell::new(tx)));   
+                
+        let shell = Rc::new(RefCell::new(Shell::new()));   
 
         Self {
             input: Input::new(),
@@ -182,7 +175,6 @@ impl App {
             shell: shell,
             exit: bool::default(),
             output: Vec::new(),
-            rx: rx,
             focus: Focus::FILES,
             editor: None,
             open_file : None,
@@ -200,7 +192,7 @@ impl App {
 
         while !self.exit {
             
-            while let Ok(bytes) = self.rx.try_recv() {
+            while let Ok(bytes) = self.shell.borrow().rx().try_recv() {
                 let text = String::from_utf8_lossy(&bytes).to_string();
                 let mut text = text.lines().map(String::from).collect();
                 self.output.append(&mut text);
@@ -960,7 +952,7 @@ impl App {
 
                     if let Some(editor) = &mut self.editor 
                     {                            
-                        for _ in 0..line_num
+                        for _ in 0..(line_num - 1)
                         {
                             editor.apply(MoveDown{shift : false }); 
                         }

@@ -15,9 +15,18 @@ use std::path::{Path, PathBuf};
 use std::env;
 use std::ffi::OsString;
 
-use crossbeam_channel::Sender;
+use crossbeam_channel::{
+    unbounded,
+    Sender,
+    Receiver
+};
 
-use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use portable_pty::{
+    CommandBuilder, 
+    NativePtySystem, 
+    PtySize, 
+    PtySystem
+};
 
 /*****************************************************
  * Types
@@ -28,6 +37,7 @@ pub struct Shell {
     cwd : PathBuf,
     env : HashMap<String, String>,
     tx  : Sender<Vec<u8>>,
+    rx  : Receiver<Vec<u8>>
 }
 
 /*****************************************************
@@ -35,11 +45,15 @@ pub struct Shell {
  *****************************************************/
 
 impl Shell {
-    pub fn new(tx : Sender<Vec<u8>>) -> Self {
+    pub fn new() -> Self {
+
+        let (tx, rx) = unbounded::<Vec<u8>>();
+
         Self {
             cwd: env::current_dir().unwrap_or_default(),
             env: HashMap::new(),
-            tx : tx
+            tx : tx,
+            rx : rx
         }
     }
 
@@ -55,6 +69,10 @@ impl Shell {
     pub fn cwd (& self) -> &Path
     {   
         &self.cwd 
+    }
+
+    pub fn rx (& self) -> &Receiver<Vec<u8>> {
+        &self.rx
     }
 
     pub fn send_cmd(&mut self, argv: Vec<&str>) 
