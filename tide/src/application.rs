@@ -112,22 +112,22 @@ pub enum Direction {
 }
 
 pub enum MenuScreen {
-    EDITOR(PopupMenu<String>),
+    EDITOR(PopupMenu<String>), // TODO: Move into wrapper struct.
     SEARCH(SearchMenu)
 }
 
 pub struct App {
-    input : Input,
+    input       : Input,
     file_system : FileTree,
-    shell : Rc<RefCell<Shell>>,
-    exit : bool,
-    output : Vec<String>,
-    rx : Receiver<Vec<u8>>,
-    focus : Focus,
-    editor : Option<Editor>,
-    open_file : Option<PathBuf>,
-    menu_screen : Option<MenuScreen>,
-    last_scroll : Instant,
+    shell       : Rc<RefCell<Shell>>,
+    exit        : bool,
+    output      : Vec<String>,
+    rx          : Receiver<Vec<u8>>, // TODO: Move into shell.rs 
+    focus       : Focus,
+    editor      : Option<Editor>,
+    open_file   : Option<PathBuf>, // TODO: Move into editor wrapper struct. 
+    menu_screen : Option<MenuScreen>, 
+    last_scroll : Instant, // TODO: Move time markers into wrapper struct. 
     last_update : Instant, 
 }
 
@@ -842,7 +842,7 @@ impl App {
                         match editor_focus {
 
                             EditorFocus::MAIN => {
-                                self.menu_screen = Some(MenuScreen::EDITOR(PopupMenu::default().add_field("Save?".to_owned()).add_field("Exit?".to_owned())));
+                               self.menu_screen = Some(MenuScreen::EDITOR(PopupMenu::default().add_field("Save?".to_owned()).add_field("Exit?".to_owned())));
                                 self.focus       = Focus::EDITOR(EditorFocus::MENU);
                             },
 
@@ -962,7 +962,7 @@ impl App {
                     {                            
                         for _ in 0..line_num
                         {
-                                editor.apply(MoveDown{shift : false }); 
+                            editor.apply(MoveDown{shift : false }); 
                         }
                         
                         // Force editor refresh.
@@ -994,8 +994,7 @@ impl App {
                 match &self.focus {
                     Focus::SEARCH => {
 
-                        let cwd = self.shell
-                                            .borrow()
+                        let cwd = self.shell.borrow()
                                             .cwd()
                                             .to_path_buf();
 
@@ -1024,10 +1023,9 @@ impl App {
 
                                     if popup_menu.selected("Save?".to_owned()) {
 
-                                        let content = self.editor
-                                                        .as_ref()
-                                                        .unwrap()
-                                                        .get_content();
+                                        let content = self.editor.as_ref()
+                                                                 .unwrap()
+                                                                 .get_content();
 
                                         let _ = fs::write(self.open_file.as_ref().unwrap(), content);
                                     
@@ -1056,6 +1054,7 @@ impl App {
                 // TODO: Apply some context about what we should search based on previous focus
                 self.menu_screen = Some(MenuScreen::SEARCH(SearchMenu::default()));
                 self.focus       = Focus::SEARCH; 
+                
             }
 
             _ => {
