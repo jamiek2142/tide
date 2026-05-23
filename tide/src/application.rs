@@ -43,6 +43,10 @@ use crossterm::event::{
         MouseEventKind
     };
 
+use pathdiff::{
+    diff_paths
+};
+
 use ratatui::{
     DefaultTerminal, 
     Frame, 
@@ -470,6 +474,8 @@ impl App {
         }
         
         frame.render_widget(output, shell_output); 
+        
+        let working_dir = self.shell.borrow().cwd().to_path_buf();
 
         // Render any popup menus
         match &mut self.menu_screen {
@@ -523,7 +529,7 @@ impl App {
                     Layout::vertical([
                         Constraint::Min(3),
                         Constraint::Fill(24), 
-                        Constraint::Min(1)
+                        Constraint::Min(2)
                     ]).split(popup_area)[..] 
                     else {
                         todo!() 
@@ -557,7 +563,9 @@ impl App {
                         // let text = k.metadata().unwrap_or_default().to_owned() + k.display();
                        
                         let (metadata, line_num) = item.metadata(); 
-                    
+                         
+                        let metadata = diff_paths(metadata, &working_dir).expect("Failed to get relative path");
+
                         let mut metadata = metadata.to_string_lossy().to_string();
 
                         let max_chars = 80;

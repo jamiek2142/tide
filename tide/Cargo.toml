@@ -16,6 +16,7 @@ grep-regex = "0.1.14"
 grep-searcher = "0.1.16"
 ignore = "0.4.25"
 nucleo = "0.5.0"
+pathdiff = "0.2.3"
 portable-pty = "0.9.0"
 ratatui = { version = "0.30.0", features = ["unstable-rendered-line-info"] } 
 ratatui-code-editor = "0.0.4"
