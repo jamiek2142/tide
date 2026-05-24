@@ -63,7 +63,11 @@ use ratatui::{
         Style
     }, 
     symbols::merge::MergeStrategy, 
-    text::Text,
+    text::{
+        Span, 
+        Line, 
+        Text
+    },
     widgets::{
         Block, 
         Borders, 
@@ -559,9 +563,6 @@ impl App {
                             },
                         };
                         
-                        // TODO: Create meta data view, and group by file path 
-                        // let text = k.metadata().unwrap_or_default().to_owned() + k.display();
-                       
                         let (metadata, line_num) = item.metadata(); 
                          
                         let metadata = diff_paths(metadata, &working_dir).expect("Failed to get relative path");
@@ -573,10 +574,16 @@ impl App {
                         let n = metadata.len().saturating_sub(max_chars);
                         metadata.drain(0..n);
 
-                        let line_num = if let Some(line_num) = line_num { format!(":{}", line_num) } else { "".to_owned() };
-                       
-                        let text = format!("{:}{:5}\n        ", metadata, line_num) + item.display(); 
-                
+                        let meta_text = Span::styled(metadata, Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD));
+
+                        let line_text = Span::raw(if let Some(line_num) = line_num { format!(":{}\n", line_num) } else { "\n".to_owned() });
+                            
+                        let meta_text = Line::from(vec![meta_text, line_text]);
+
+                        let result_text = Span::raw(item.display());
+
+                        let text = Text::from(vec![meta_text.into(), result_text.into()]);
+
                         ListItem::new(text).style(style)
                     })
                     .collect();
