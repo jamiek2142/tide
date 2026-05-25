@@ -25,9 +25,7 @@ use std::{
     path::{
         Path, 
         PathBuf
-    }, 
-    rc::Rc, 
-    time::{
+    }, rc::Rc, time::{
         Duration,
         Instant
     }
@@ -141,6 +139,35 @@ fn is_in_hitbox ((x,y) : (u16, u16),  rect : &Rect) -> bool
 {
     (x > rect.x) && (x < (rect.x + rect.width )) &&
     (y > rect.y) && (y < (rect.y + rect.height))
+}
+
+fn get_path_to_render (path : &Path, avaiable_space : u16) -> String {
+    
+    let mut required_space = 0; 
+    let mut num_elems = 0;
+    
+    for elem in path.iter().rev() {
+        let num_chars : u16 = elem.to_str().unwrap().chars().count().try_into().unwrap();
+
+        required_space = required_space + num_chars;
+        
+        if required_space > avaiable_space 
+        {
+            break;
+        }
+            
+        num_elems = num_elems + 1;
+    };
+
+    let num_components= path.components().count();
+            
+    if num_elems < num_components {
+        let dir_path_to_render : PathBuf = path.components().skip(num_components - num_elems).collect();
+
+        "../".to_string() + &dir_path_to_render.to_string_lossy()
+    } else {
+        path.to_string_lossy().to_string()
+    }
 }
 
 /*****************************************************
@@ -359,37 +386,8 @@ impl App {
             }; 
             
         let current_dir_path = self.file_system.get_current_dir_to_render();
-        let avaiable_space = if file_area.width > 15 { 
-                15 
-            } else { 
-                file_area.width 
-            };
-        let mut required_space = 0; 
-        let mut num_elems = 0;
-
-        for elem in current_dir_path.iter().rev() {
-            let num_chars : u16 = elem.to_str().unwrap().chars().count().try_into().unwrap();
-
-            required_space = required_space + num_chars;
-        
-            if required_space > avaiable_space 
-            {
-                break;
-            }
-            
-            num_elems = num_elems + 1;
-        };
-
-        let current_dir_path = self.file_system.get_current_dir_to_render();
-        let num_components    = current_dir_path.components().count();
-            
-        let dir_path_to_render = if num_elems < num_components {
-                let dir_path_to_render : PathBuf = current_dir_path.components().skip(num_components - num_elems - 1).collect();
-
-                "../".to_string() + &dir_path_to_render.to_string_lossy()
-            } else {
-                current_dir_path.to_string_lossy().to_string()
-            };
+                    
+        let dir_path_to_render = get_path_to_render(&current_dir_path, 15);
 
         let list = List::new(items)
             .block(
@@ -485,9 +483,25 @@ impl App {
         match &mut self.menu_screen {
 
             Some(MenuScreen::EDITOR(popup)) => {
+ 
+                let popup_area_width = {
+                    let mut max_len = 0;
 
-                let popup_area_width = editor_area.width / 4;
-                let popup_area_height = 10;
+                    for element in popup.get_list_items() {
+                   
+                        if element.chars().count() > max_len {
+
+                            max_len = element.chars().count();
+                        }
+
+                    }
+
+                    max_len as u16
+                } + 8;
+
+                let popup_area_height = {
+                    popup.get_list_items().iter().count() as u16
+                } + 2;
 
                 let popup_area_x = editor_area.x + (editor_area.width  - popup_area_width ) / 2 ;
                 let popup_area_y = editor_area.y + (editor_area.height - popup_area_height) / 2 ;
@@ -565,15 +579,10 @@ impl App {
                         
                         let (metadata, line_num) = item.metadata(); 
                          
-                        let metadata = diff_paths(metadata, &working_dir).expect("Failed to get relative path");
-
-                        let mut metadata = metadata.to_string_lossy().to_string();
-
-                        let max_chars = 80;
+                        let path = diff_paths(metadata, &working_dir).expect("Failed to get relative path");
                         
-                        let n = metadata.len().saturating_sub(max_chars);
-                        metadata.drain(0..n);
-
+                        let metadata = get_path_to_render(&path, search_area.width); 
+                    
                         let meta_text = Span::styled(metadata, Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD));
 
                         let line_text = Span::raw(if let Some(line_num) = line_num { format!(":{}\n", line_num) } else { "\n".to_owned() });
@@ -849,7 +858,7 @@ impl App {
                         match editor_focus {
 
                             EditorFocus::MAIN => {
-                               self.menu_screen = Some(MenuScreen::EDITOR(PopupMenu::default().add_field("Save?".to_owned()).add_field("Exit?".to_owned())));
+                                self.menu_screen = Some(MenuScreen::EDITOR(PopupMenu::default().add_field("Save?".to_owned()).add_field("Exit?".to_owned())));
                                 self.focus       = Focus::EDITOR(EditorFocus::MENU);
                             },
 

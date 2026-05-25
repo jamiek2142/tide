@@ -119,14 +119,17 @@ impl Sink for LineCollector {
 
 pub fn search (cwd : &Path, query : &str) -> SearchHandle {
          
+    const MAX_COUNT : u32 = 20000; 
+
     let (build_tx, build_rx) = crossbeam_channel::bounded(2048);
     let cwd = cwd.to_path_buf();
     
     let t1 = thread::spawn(move || {
         let walker = WalkBuilder::new(&cwd).build_parallel();
-
+        
         walker.run(move || {
 
+        let mut count = 0;
         let mut searcher = SearcherBuilder::new().binary_detection(BinaryDetection::quit(b'\x00')).build();    
         let thread_local_tx : crossbeam_channel::Sender<SearchItem> = build_tx.clone(); 
     
@@ -149,6 +152,8 @@ pub fn search (cwd : &Path, query : &str) -> SearchHandle {
                     SearchItemType::DIRECTORY
                     )
                 );
+
+               count += 1;
              
             } else if entry.file_type().map_or(false, |ft| ft.is_file()) {
                         
@@ -159,6 +164,8 @@ pub fn search (cwd : &Path, query : &str) -> SearchHandle {
                         SearchItemType::FILE
                     )
                 );
+
+                count += 1;
 
                 let mut collector = LineCollector {
                     path: path.to_path_buf(),
@@ -171,8 +178,14 @@ pub fn search (cwd : &Path, query : &str) -> SearchHandle {
                    
                     for line in collector.lines {
                         let _ = thread_local_tx.send(line);
+
+                        count += 1;
                     }
                 }
+            }
+
+            if count > MAX_COUNT {
+                return ignore::WalkState::Quit
             }
 
             ignore::WalkState::Continue

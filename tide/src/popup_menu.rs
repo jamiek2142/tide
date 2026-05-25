@@ -68,29 +68,29 @@ impl<T> PopupMenu<T> where T : Clone + PartialEq {
 
     }
 
-   pub fn reset (&mut self) {
+    pub fn reset (&mut self) {
         self.list.clear();
         self.state.select(None);
-   }
+    }
 
-   pub fn get_state(&mut self) -> &mut ListState {
+    pub fn get_state(&mut self) -> &mut ListState {
         &mut self.state
-   }
+    }
 
-   pub fn get_list_items (& self) -> &[T] {
+    pub fn get_list_items (& self) -> &[T] {
         &self.list
-   }
+    }
 
-   pub fn get_selected (&self) -> Option<&T> {
+    pub fn get_selected (&self) -> Option<&T> {
         
         let Some(index) = self.state.selected() else {
             return None;
         };
 
         Some(&self.list[index])
-   }
+    }
 
-   pub fn selected (&self, field : T) -> bool {
+    pub fn selected (&self, field : T) -> bool {
         
        let Some(index) = self.state.selected() else {
            return false;
@@ -101,9 +101,9 @@ impl<T> PopupMenu<T> where T : Clone + PartialEq {
        }
 
        self.list[index] == field
-   }
+    }
     
-   pub fn traverse_items (&mut self, direction: Direction) {
+     pub fn traverse_items (&mut self, direction: Direction) {
         let k = match direction {
             Direction::UP => match self.state.selected() {
                 Some(k) => {
