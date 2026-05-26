@@ -18,11 +18,7 @@ use crate::file_system::FileTree;
 use crate::search::SearchItemType;
 
 use std::{ 
-    cell::RefCell, 
-    collections::HashMap, 
-    fs, 
-    io, 
-    path::{
+    cell::RefCell, collections::HashMap,  fs, io, path::{
         Path, 
         PathBuf
     }, rc::Rc, time::{
@@ -47,7 +43,7 @@ use pathdiff::{
 
 use ratatui::{
     DefaultTerminal, 
-    Frame, 
+    Frame,
     layout::{
         Constraint, 
         Layout, 
@@ -59,14 +55,9 @@ use ratatui::{
         Color, 
         Modifier, 
         Style
-    }, 
-    symbols::merge::MergeStrategy, 
-    text::{
-        Span, 
-        Line, 
-        Text
-    },
-    widgets::{
+    }, symbols::merge::MergeStrategy, text::{
+        Line, Span, Text
+    }, widgets::{
         Block, 
         Borders, 
         Clear, 
@@ -117,6 +108,17 @@ pub enum MenuScreen {
     SEARCH(SearchMenu)
 }
 
+#[derive(PartialEq)]
+pub enum DragKind {
+    VERTICAL,
+    HORIZONTAL,
+}
+
+pub struct Split {
+    horizontal : u16,
+    vertical   : u16
+}
+
 pub struct App {
     input       : Input,
     file_system : FileTree,
@@ -125,10 +127,12 @@ pub struct App {
     output      : Vec<String>,
     focus       : Focus,
     editor      : Option<Editor>,
-    open_file   : Option<PathBuf>, // TODO: Move into editor wrapper struct. 
+    open_file   : Option<PathBuf>,    //< TODO: Move into editor wrapper struct. 
     menu_screen : Option<MenuScreen>, 
-    last_scroll : Instant, // TODO: Move time markers into wrapper struct. 
+    last_scroll : Instant,            //< TODO: Move time markers into wrapper struct. 
     last_update : Instant, 
+    split       : Split,
+    last_drag   : Option<DragKind>
 }
 
 /*****************************************************
@@ -194,10 +198,68 @@ impl From<MouseEventKind> for Direction {
     }
 }
 
+impl Default for Split {
+
+    fn default() -> Self {
+        Self { horizontal : 30, vertical : 50 }  
+    }
+}
+
 /*****************************************************
  * Implementations
  *****************************************************/
 
+
+impl Split {
+
+    pub fn get_horizontal_hitbox (&self, frame : &Rect) -> Rect {
+
+        const TOLERANCE : u16 = 2;
+
+        let center = (self.horizontal * frame.width) / 100;
+
+        let x      = center.saturating_sub(TOLERANCE);
+        let width  = center.saturating_add(TOLERANCE) - x;
+        let y      = frame.y;
+
+        let height = frame.height;
+
+        Rect { x, y, width, height }
+    }
+    
+    pub fn get_vertical_split_hitbox (&self, frame : &Rect) -> Rect {
+        
+        const TOLERANCE : u16 = 3;
+
+        let center = (self.vertical * frame.height) / 100;
+
+        let y      = center.saturating_sub(TOLERANCE);
+        let height = center.saturating_add(TOLERANCE) - y;
+
+        let x      = frame.x.saturating_add((self.horizontal * frame.width) / 100);
+        let width  = frame.width - x;
+
+        Rect { x, y, width, height }
+    }
+
+    pub fn set_horizontal_percentage (&mut self, point : (u16, u16), frame : &Rect) {
+        self.horizontal = point.0 * 100 / frame.width;
+    }
+
+    pub fn set_vertical_percentage (&mut self, point : (u16, u16), frame : &Rect) {
+         self.vertical = point.1 * 100 / frame.height;
+    }
+
+    pub fn get_horizontal_split_percentage (&self) -> (u16, u16) {
+        const MAX_PERCENT : u16 = 100;
+        (self.horizontal, MAX_PERCENT.saturating_sub(self.horizontal))
+    }
+
+    pub fn get_vertical_split_percentage(&self) -> (u16, u16) { 
+        const MAX_PERCENT : u16 = 100;
+        (self.vertical, MAX_PERCENT.saturating_sub(self.vertical))
+    }
+}
 
 impl App {
     pub fn new() -> Self {
@@ -215,7 +277,9 @@ impl App {
             open_file : None,
             menu_screen : None,
             last_scroll : Instant::now(),
-            last_update : Instant::now()
+            last_update : Instant::now(),
+            split : Split::default(),
+            last_drag : None
        }
     }
 
@@ -273,23 +337,26 @@ impl App {
     }
 
     // TODO: insane amount of logic in this function. Error handling is non-existent.
-    //       needs refactoring. Ideally rendering would be handed off to relevant 
+    //       needs refactoring. Ideally/ rendering would be handed off to relevant 
     //       components, but API is tricky w/o context of UI elements.
     fn draw(&mut self, frame: &mut Frame) -> anyhow::Result<()> {
 
+        let (left, right) = self.split.get_horizontal_split_percentage();
+        let (top, bottom) = self.split.get_vertical_split_percentage(); 
+
         let [file_area, main_area] = 
             Layout::horizontal([
-                Constraint::Percentage(30), 
-                Constraint::Percentage(70)
+                Constraint::Percentage(left), 
+                Constraint::Percentage(right)
             ]).spacing(Spacing::Overlap(1)).split(frame.area())[..] 
             else { 
                 todo!() 
             };
         let [editor_area, shell_output, shell_input] = 
             Layout::vertical([
-                Constraint::Fill(24), 
-                Constraint::Min(10), 
-                Constraint::Min(1)
+                Constraint::Percentage(top),
+                Constraint::Percentage(bottom),
+                Constraint::Min(2)
             ]).split(main_area)[..] 
             else {
                  todo!() 
@@ -649,19 +716,19 @@ impl App {
         let shell_area = Rect::new(shell_output.x, shell_output.y, shell_output.width, shell_output.height + shell_input.height);
         
         // Handle events after drawing the layout so we can use the areas drawn as part of the app.
-        self.handle_events(&editor_area, &shell_area, &file_area)?;
+        self.handle_events(&frame.area(), &editor_area, &shell_area, &file_area)?;
 
         Ok(())
     }
 
-    fn handle_events(&mut self, editor_area : &Rect, shell_area : &Rect, file_area : &Rect) -> io::Result<()> {
+    fn handle_events(&mut self, frame_area : &Rect, editor_area : &Rect, shell_area : &Rect, file_area : &Rect) -> io::Result<()> {
         if event::poll(Duration::from_millis(10))? {
             match event::read()? {
                 Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                     self.handle_key_event(key_event, editor_area)
                 }
                 Event::Mouse(mouse_event) => { 
-                    self.handle_mouse_event(mouse_event, editor_area, shell_area, file_area); 
+                    self.handle_mouse_event(mouse_event, frame_area,editor_area, shell_area, file_area); 
                 }
                 _ => { /* Nothing to do. */ }
             }
@@ -716,6 +783,34 @@ impl App {
 
         match argv[0] {
 
+            "set-vertical" => {
+                
+                if argv.len() > 1 { 
+                    self.split.vertical = (| x : &str  | { 
+                        let x = x.parse::<u16>().unwrap_or(50); 
+
+                        if x > 100 { 
+                            100 
+                        } else { 
+                            x 
+                        }
+                    }) (argv[1]); 
+                }
+            },
+
+            "set-horizontal" => {
+                if argv.len() > 1 { 
+                    self.split.horizontal = (| x : &str  | { 
+                        let x = x.parse::<u16>().unwrap_or(50); 
+                        if x > 100 { 
+                            100 
+                        } else { 
+                            x 
+                        } 
+                    }) (argv[1]); 
+                }
+            },
+
             "clear" => {
                 self.output.clear();
             },
@@ -753,17 +848,54 @@ impl App {
 
     }
     
-    fn handle_mouse_event(&mut self, mouse_event : MouseEvent, editor_area : &Rect, shell_area : &Rect, file_area : &Rect) {
-        
+    fn handle_mouse_event(&mut self, mouse_event : MouseEvent, frame_area : &Rect,  editor_area : &Rect, shell_area : &Rect, file_area : &Rect) {
+       
+        if let MouseEventKind::Drag(_mouse_button) = mouse_event.kind {
+            
+            let x = mouse_event.column;
+            let y = mouse_event.row;
+
+            match self.last_drag {
+                Some(DragKind::VERTICAL) => { 
+                    self.split.set_vertical_percentage((x,y), frame_area);
+                },
+                Some(DragKind::HORIZONTAL) => {
+                    self.split.set_horizontal_percentage((x,y), frame_area);
+                },  
+                None => {
+                    /* Nothing to do. */
+                },
+            }
+        };
+
+        if let MouseEventKind::Up(_mouse_button) = mouse_event.kind {
+           
+            // Clear previous drag.
+            if let Some(_) = self.last_drag {
+                self.last_drag = None;
+            };
+        };  
+
         // First handle mouse event clicks. Left mouse sets focus. 
         if let MouseEventKind::Down(mouse_button) = mouse_event.kind { 
-            
+         
             const OFFSET_TO_FIRST_ENTRY : u16 = 1;
 
             let x = mouse_event.column;
             let y = mouse_event.row;
 
-            if mouse_button.is_left() {
+            if is_in_hitbox((x, y), &self.split.get_horizontal_hitbox(frame_area)) {
+                self.last_drag = Some(DragKind::HORIZONTAL);
+                return;
+            }
+
+            if is_in_hitbox((x, y), &self.split.get_vertical_split_hitbox(frame_area)) {
+                self.last_drag = Some(DragKind::VERTICAL);
+                return;
+            }
+
+            if mouse_button.is_left() { 
+
                 if is_in_hitbox((x, y), editor_area) {
                     if let Some(_editor) = &self.editor {
                         self.focus = Focus::EDITOR(EditorFocus::MAIN);

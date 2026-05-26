@@ -134,7 +134,7 @@ pub fn search (cwd : &Path, query : &str) -> SearchHandle {
         let thread_local_tx : crossbeam_channel::Sender<SearchItem> = build_tx.clone(); 
     
         Box::new(move |entry | { 
-        
+    
             let entry = match entry {
                 Ok(entry) => entry,
                 Err(_) => return ignore::WalkState::Continue
