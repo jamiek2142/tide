@@ -3,24 +3,23 @@
  *****************************************************/
 
 /*****************************************************
- * Crates 
+ * Crates
  *****************************************************/
 
 use std::collections::VecDeque;
 
-use crossterm::{event::{Event, KeyCode}};
+use crossterm::event::{Event, KeyCode};
 
 /*****************************************************
  * Types
  *****************************************************/
 
 #[derive(Clone)]
-pub struct Input
-{
-    command_queue   : VecDeque<String>,
-    command_buffer  : Vec<String>,
-    command_index   : usize,
-    cursor_position : usize
+pub struct Input {
+    command_queue: VecDeque<String>,
+    command_buffer: Vec<String>,
+    command_index: usize,
+    cursor_position: usize,
 }
 
 /*****************************************************
@@ -28,118 +27,94 @@ pub struct Input
  *****************************************************/
 
 impl Default for Input {
-
-    fn default () -> Self {
+    fn default() -> Self {
         Input::new()
     }
-
 }
 
-impl Input
-{
-    pub fn new () -> Self 
-    {
-        Self 
-        { command_queue   : VecDeque::new(), 
-          command_buffer  : vec!["".to_string()], 
-          command_index   : 0, 
-          cursor_position : 0 
+impl Input {
+    pub fn new() -> Self {
+        Self {
+            command_queue: VecDeque::new(),
+            command_buffer: vec!["".to_string()],
+            command_index: 0,
+            cursor_position: 0,
         }
     }
 
-    pub fn pop_command (&mut self) -> Option<String>
-    {
+    pub fn pop_command(&mut self) -> Option<String> {
         self.command_queue.pop_front()
     }
-    
-    fn push_command (&mut self)
-    {
-        let command = self.command_buffer[self.command_index].clone();                   
+
+    fn push_command(&mut self) {
+        let command = self.command_buffer[self.command_index].clone();
 
         self.command_queue.push_back(command);
     }
 
-    pub fn get_input_to_render (&self) -> &str
-    {     
+    pub fn get_input_to_render(&self) -> &str {
         self.command_buffer[self.command_index].as_str()
     }
-    
-    pub fn get_cursor_position (&self) -> u16
-    {
-        self.cursor_position.try_into().unwrap_or_default() 
+
+    pub fn get_cursor_position(&self) -> u16 {
+        self.cursor_position.try_into().unwrap_or_default()
     }
 
-    pub fn handle_event(&mut self, event : &Event)
-    {
-        match event
-        {
+    pub fn handle_event(&mut self, event: &Event) {
+        match event {
             Event::Key(key) => {
                 match key.code {
-                    KeyCode::Char(c) => {    
+                    KeyCode::Char(c) => {
                         self.command_buffer[self.command_index].insert(self.cursor_position, c);
-                        self.cursor_position = self.cursor_position + 1;
-                    },
+                        self.cursor_position += 1;
+                    }
                     KeyCode::Left => {
-                        if self.cursor_position > 0
-                        {
-                            self.cursor_position = self.cursor_position - 1;
+                        if self.cursor_position > 0 {
+                            self.cursor_position -= 1;
                         }
                     }
                     KeyCode::Right => {
-                        if self.command_buffer[self.command_index].len() > 0
-                        {
+                        if self.command_buffer[self.command_index].len() > 0 {
                             if self.cursor_position < self.command_buffer[self.command_index].len()
                             {
-                                self.cursor_position = self.cursor_position + 1;
+                                self.cursor_position += 1;
                             }
                         }
-                    },
+                    }
                     KeyCode::Up => {
-                        if self.command_index > 0
-                        {
-                            self.command_index = self.command_index - 1;
+                        if self.command_index > 0 {
+                            self.command_index -= 1;
                         }
-                    },
+                    }
                     KeyCode::Down => {
-                        if self.command_buffer.len() > 0
-                        {
-                            if self.command_index < (self.command_buffer.len() - 1)
-                            {
-                                self.command_index = self.command_index + 1;
+                        if self.command_buffer.len() > 0 {
+                            if self.command_index < (self.command_buffer.len() - 1) {
+                                self.command_index += 1;
                             }
                         }
-                    },
+                    }
                     KeyCode::Enter => {
-                            
-                        if self.command_buffer[self.command_index].is_empty()
-                        {
+                        if self.command_buffer[self.command_index].is_empty() {
                             return;
                         }
 
                         self.push_command();
                         self.command_buffer.push("".to_string());
                         self.cursor_position = 0;
-                        self.command_index   = self.command_index + 1;
-                    },
-                    KeyCode::Backspace => {
-                        
-                        if self.cursor_position > 0 
-                        {
-                            self.command_buffer[self.command_index].remove(self.cursor_position - 1);
-
-                            self.cursor_position = self.cursor_position - 1;
-                        }
-                    },
-                    _ => {
-                        /* TODO: Handle other KeyCodes. */
+                        self.command_index += 1;
                     }
+                    KeyCode::Backspace => {
+                        if self.cursor_position > 0 {
+                            self.command_buffer[self.command_index]
+                                .remove(self.cursor_position - 1);
+
+                            self.cursor_position -= 1;
+                        }
+                    }
+                    _ => { /* TODO: Handle other KeyCodes. */ }
                 }
-            },
-            _ => {
-            },
+            }
+            _ => {}
         }
     }
-        
 }
-
-

@@ -4,29 +4,18 @@
 
 /**
  * This file implements the shell logic
- */ 
-
+ */
 /*****************************************************
- * Crates 
+ * Crates
  *****************************************************/
-
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::env;
 use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 
-use crossbeam_channel::{
-    unbounded,
-    Sender,
-    Receiver
-};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 
-use portable_pty::{
-    CommandBuilder, 
-    NativePtySystem, 
-    PtySize, 
-    PtySystem
-};
+use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 
 /*****************************************************
  * Types
@@ -34,10 +23,10 @@ use portable_pty::{
 
 #[derive(Clone)]
 pub struct Shell {
-    cwd : PathBuf,
-    env : HashMap<String, String>,
-    tx  : Sender<Vec<u8>>,
-    rx  : Receiver<Vec<u8>>
+    cwd: PathBuf,
+    env: HashMap<String, String>,
+    tx: Sender<Vec<u8>>,
+    rx: Receiver<Vec<u8>>,
 }
 
 /*****************************************************
@@ -46,49 +35,45 @@ pub struct Shell {
 
 impl Shell {
     pub fn new() -> Self {
-
         let (tx, rx) = unbounded::<Vec<u8>>();
 
         Self {
             cwd: env::current_dir().unwrap_or_default(),
             env: HashMap::new(),
-            tx : tx,
-            rx : rx
+            tx: tx,
+            rx: rx,
         }
     }
 
-    pub fn set_cwd (&mut self, path : PathBuf)
-    {
+    pub fn set_cwd(&mut self, path: PathBuf) {
         self.cwd = path;
     }
 
-    pub fn set_env (&mut self, variable : &str, value : &str) {
+    pub fn set_env(&mut self, variable: &str, value: &str) {
         self.env.insert(variable.to_string(), value.to_string());
     }
 
-    pub fn cwd (& self) -> &Path
-    {   
-        &self.cwd 
+    pub fn cwd(&self) -> &Path {
+        &self.cwd
     }
 
-    pub fn rx (& self) -> &Receiver<Vec<u8>> {
+    pub fn rx(&self) -> &Receiver<Vec<u8>> {
         &self.rx
     }
 
-    pub fn send_cmd(&mut self, argv: Vec<&str>) 
-    {
+    pub fn send_cmd(&mut self, argv: Vec<&str>) {
         let pty_system = NativePtySystem::default();
         let pair = pty_system.openpty(PtySize::default()).unwrap();
- 
+
         let argv = argv.join(" ");
 
         let argv = vec!["/bin/sh", "-c", &argv];
-        
+
         let mut cmd = CommandBuilder::from_argv(argv.iter().map(OsString::from).collect());
-        
+
         // Set current working dir and environment variables
         cmd.cwd(self.cwd());
-        
+
         for (k, v) in &self.env {
             cmd.env(k, v);
         }
@@ -110,7 +95,5 @@ impl Shell {
                 let _ = tx.send(buffer[..n].to_vec());
             }
         });
-      }
-
+    }
 }
-
