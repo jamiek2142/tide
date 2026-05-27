@@ -86,7 +86,7 @@ pub struct App {
     editor: Option<Editor>,
     open_file: Option<PathBuf>, //< TODO: Move into editor wrapper struct.
     menu_screen: Option<MenuScreen>,
-    last_scroll: Instant, //< TODO: Move time markers into wrapper struct.
+    // last_scroll: Instant, //< TODO: Move time markers into wrapper struct.
     last_update: Instant,
     split: Split,
     last_drag: Option<DragKind>,
@@ -238,7 +238,7 @@ impl App {
             editor: None,
             open_file: None,
             menu_screen: None,
-            last_scroll: Instant::now(),
+            //last_scroll: Instant::now(),
             last_update: Instant::now(),
             split: Split::default(),
             last_drag: None,
@@ -819,6 +819,20 @@ impl App {
         let x = mouse_event.column;
         let y = mouse_event.row;
 
+        if let Focus::EDITOR(editor_focus) = &self.focus {    
+            if let EditorFocus::MAIN = editor_focus {
+                if let Some(editor) = &mut self.editor {
+                    let _ = editor.mouse(mouse_event, editor_area);
+                };
+            };
+        };
+
+        if is_in_hitbox((x,y), editor_area) {
+            if let Some(editor) = &mut self.editor {
+                let _ = editor.mouse(mouse_event, editor_area);
+            };
+        }
+
         match mouse_event.kind {
             MouseEventKind::Drag(_mouse_button) => {
                 match self.last_drag {
@@ -843,7 +857,7 @@ impl App {
             MouseEventKind::Down(mouse_button) => {
                 const OFFSET_TO_FIRST_ENTRY: u16 = 1;
 
-                                if is_in_hitbox((x, y), &self.split.get_horizontal_hitbox(frame_area)) {
+                if is_in_hitbox((x, y), &self.split.get_horizontal_hitbox(frame_area)) {
                     self.last_drag = Some(DragKind::HORIZONTAL);
                     return;
                 }
@@ -900,35 +914,6 @@ impl App {
             }
 
             _ => { /* Nothing to do. */ }
-        }
-
-        match &self.focus {
-            Focus::SHELL | Focus::SEARCH => {}
-            Focus::FILES => {
-                match mouse_event.kind {
-                    MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
-                        if self.last_scroll.elapsed() > Duration::from_millis(250) =>
-                    {
-                        if let Some(file) = self
-                            .file_system
-                            .traverse_dirs(Direction::from(mouse_event.kind))
-                        {
-                            self.open_file(&file);
-                        };
-
-                        self.last_scroll = Instant::now();
-                    }
-                    _ => { /* Nothing to do. */ }
-                }
-            }
-            Focus::EDITOR(editor_focus) => match editor_focus {
-                EditorFocus::MAIN => {
-                    if let Some(editor) = &mut self.editor {
-                        let _ = editor.mouse(mouse_event, editor_area);
-                    };
-                }
-                EditorFocus::MENU => {}
-            },
         }
     }
 
