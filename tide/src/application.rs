@@ -16,9 +16,10 @@ use crate::search::menu::SearchMenu;
 use crate::shell::Shell;
 
 use std::{
-    cell::RefCell, collections::HashMap, fs, io, path::{Path, PathBuf}, rc::Rc, time::{Duration, Instant}
+    cell::RefCell, collections::HashMap, fs, io, path::{Path, PathBuf}, rc::Rc, thread, time::{Duration, Instant}
 };
 
+use crossbeam_channel::{Receiver, unbounded};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 
 use pathdiff::diff_paths;
@@ -86,6 +87,7 @@ pub struct App {
     editor: Option<Editor>,
     open_file: Option<PathBuf>, //< TODO: Move into editor wrapper struct.
     menu_screen: Option<MenuScreen>,
+    event_rx : Receiver<Event>,
     // last_scroll: Instant, //< TODO: Move time markers into wrapper struct.
     last_update: Instant,
     split: Split,
@@ -227,6 +229,17 @@ impl App {
     pub fn new() -> Self {
         let shell = Rc::new(RefCell::new(Shell::new()));
 
+        let (tx, rx) = unbounded();
+
+
+        thread::spawn(move || {
+ 
+            loop {
+                let event = event::read().unwrap();
+                let _ = tx.send(event);
+            }
+        });
+
         Self {
             input: Input::new(),
             file_system: FileTree::new(Rc::clone(&shell)),
@@ -238,6 +251,7 @@ impl App {
             editor: None,
             open_file: None,
             menu_screen: None,
+            event_rx: rx,
             //last_scroll: Instant::now(),
             last_update: Instant::now(),
             split: Split::default(),
@@ -677,10 +691,9 @@ impl App {
         shell_area: &Rect,
         file_area: &Rect,
     ) -> io::Result<()> {
-        if event::poll(Duration::from_millis(10))? {
-            
-            let event = event::read()?;
 
+        if let Ok(event) = self.event_rx.recv_timeout(Duration::from_millis(1)) {
+           
             //let string = format!("{:?}", event);
             //self.output.push(string);
 
@@ -819,13 +832,16 @@ impl App {
         let x = mouse_event.column;
         let y = mouse_event.row;
 
+        /*
         if let Focus::EDITOR(editor_focus) = &self.focus {    
             if let EditorFocus::MAIN = editor_focus {
                 if let Some(editor) = &mut self.editor {
                     let _ = editor.mouse(mouse_event, editor_area);
+                
                 };
             };
         };
+        */
 
         if is_in_hitbox((x,y), editor_area) {
             if let Some(editor) = &mut self.editor {
