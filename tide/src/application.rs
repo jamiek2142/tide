@@ -60,6 +60,11 @@ pub enum Direction {
     DOWN,
 }
 
+pub enum MenuScreenType {
+    EDITOR,
+    SEARCH
+}
+
 pub enum MenuScreen {
     EDITOR(PopupMenu<String>), // TODO: Move into wrapper struct.
     SEARCH(SearchMenu),
@@ -487,8 +492,9 @@ impl App {
 
         let working_dir = self.shell.borrow().cwd().to_path_buf();
 
+
         // Render any popup menus
-        match &mut self.menu_screen {
+        let menu_screen = match &mut self.menu_screen {
             Some(MenuScreen::EDITOR(popup)) => {
                 let popup_area_width = {
                     let mut max_len = 0;
@@ -534,6 +540,8 @@ impl App {
                 frame.render_widget(Clear, popup_area);
 
                 frame.render_stateful_widget(popup_list, popup_area, popup.get_state());
+
+                Some((MenuScreenType::EDITOR, popup_area))
             }
 
             Some(MenuScreen::SEARCH(popup)) => {
@@ -561,11 +569,33 @@ impl App {
                     todo!()
                 };
 
-                let title_block =
-                    Block::default().borders(Borders::TOP | Borders::RIGHT | Borders::LEFT);
-                let search_block = Block::default().borders(Borders::RIGHT | Borders::LEFT);
-                let input_block =
-                    Block::default().borders(Borders::BOTTOM | Borders::RIGHT | Borders::LEFT);
+                let title_block = {
+                    let block = Block::default().borders(Borders::TOP | Borders::RIGHT | Borders::LEFT);
+                    
+                    if let Focus::SEARCH = self.focus {
+                        block.border_style(Style::new().light_green())
+                    } else { 
+                        block 
+                    }
+                };
+                let search_block = {
+                    let block = Block::default().borders(Borders::RIGHT | Borders::LEFT);
+
+                    if let Focus::SEARCH = self.focus {
+                        block.border_style(Style::new().light_green())
+                    } else { 
+                        block 
+                    }
+                };
+                let input_block = {
+                    let block = Block::default().borders(Borders::BOTTOM | Borders::RIGHT | Borders::LEFT);
+
+                    if let Focus::SEARCH = self.focus {
+                        block.border_style(Style::new().light_green())
+                    } else { 
+                        block 
+                    }
+                };
 
                 let popup_items = popup.get_list_items();
                 let popup_items: Vec<ListItem> = popup_items
@@ -665,10 +695,12 @@ impl App {
                 }
 
                 frame.render_stateful_widget(popup_list, search_area, popup.get_state());
+
+                Some((MenuScreenType::SEARCH, search_area))
             }
 
-            _ => { /* Nothing to render. */ }
-        }
+            _ => { None }
+        };
 
         // Create a rect which maps to the entire shell area for handling mouse events.
         let shell_area = Rect::new(
@@ -679,7 +711,7 @@ impl App {
         );
 
         // Handle events after drawing the layout so we can use the areas drawn as part of the app.
-        self.handle_events(&frame.area(), &editor_area, &shell_area, &file_area)?;
+        self.handle_events(&frame.area(), &editor_area, &shell_area, &file_area, menu_screen.as_ref())?;
 
         Ok(())
     }
@@ -690,8 +722,10 @@ impl App {
         editor_area: &Rect,
         shell_area: &Rect,
         file_area: &Rect,
+        popup_area : Option<&(MenuScreenType, Rect)>
     ) -> io::Result<()> {
 
+        // TODO: Pull out all events in single pass. 
         if let Ok(event) = self.event_rx.recv_timeout(Duration::from_millis(1)) {
            
             //let string = format!("{:?}", event);
@@ -708,6 +742,7 @@ impl App {
                         editor_area,
                         shell_area,
                         file_area,
+                        popup_area
                     );
                 }
                 _ => { /* Nothing to do. */ }
@@ -828,20 +863,10 @@ impl App {
         editor_area: &Rect,
         shell_area: &Rect,
         file_area: &Rect,
+        popup_area : Option<&(MenuScreenType, Rect)>
     ) {
         let x = mouse_event.column;
         let y = mouse_event.row;
-
-        /*
-        if let Focus::EDITOR(editor_focus) = &self.focus {    
-            if let EditorFocus::MAIN = editor_focus {
-                if let Some(editor) = &mut self.editor {
-                    let _ = editor.mouse(mouse_event, editor_area);
-                
-                };
-            };
-        };
-        */
 
         if is_in_hitbox((x,y), editor_area) {
             if let Some(editor) = &mut self.editor {
@@ -873,21 +898,40 @@ impl App {
             MouseEventKind::Down(mouse_button) => {
                 const OFFSET_TO_FIRST_ENTRY: u16 = 1;
 
-                if is_in_hitbox((x, y), &self.split.get_horizontal_hitbox(frame_area)) {
-                    self.last_drag = Some(DragKind::HORIZONTAL);
-                    return;
-                }
-
-                if is_in_hitbox((x, y), &self.split.get_vertical_split_hitbox(frame_area)) {
-                    self.last_drag = Some(DragKind::VERTICAL);
-                    return;
-                }
 
                 if mouse_button.is_left() {
-                    if is_in_hitbox((x, y), editor_area) {
-                        if let Some(_editor) = &self.editor {
+
+                    if is_in_hitbox((x, y), &self.split.get_horizontal_hitbox(frame_area)) {
+                        self.last_drag = Some(DragKind::HORIZONTAL);
+                        return;
+                    }
+
+                    if is_in_hitbox((x, y), &self.split.get_vertical_split_hitbox(frame_area)) {
+                        self.last_drag = Some(DragKind::VERTICAL);
+                        return;
+                    }
+                    
+                    if let Some((menu_screen, popup_area)) = popup_area {
+
+                        if is_in_hitbox((x,y), popup_area) 
+                        {
+                            match menu_screen {
+                                MenuScreenType::EDITOR => { 
+                                    self.focus = Focus::EDITOR(EditorFocus::MENU) 
+                                } 
+                                MenuScreenType::SEARCH => { 
+                                    self.focus = Focus::SEARCH 
+                                }
+                            }
+                            
+                            return;
+                        }
+                    }   
+
+                    if is_in_hitbox((x, y), editor_area) 
+                        && let Some(_editor) = &self.editor {
                             self.focus = Focus::EDITOR(EditorFocus::MAIN);
-                        };
+                        
                     } else if is_in_hitbox((x, y), shell_area) {
                         self.focus = Focus::SHELL;
                     } else if is_in_hitbox((x, y), file_area) {
