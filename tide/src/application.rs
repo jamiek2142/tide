@@ -26,14 +26,14 @@ use pathdiff::diff_paths;
 
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Layout, Margin, Position, Rect, Spacing},
+    layout::{Constraint, Layout, Margin, Position, Rect, Spacing, Offset},
     style::{Color, Modifier, Style},
     symbols::merge::MergeStrategy,
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph, Tabs},
 };
 
-use ratatui_code_editor::{actions::MoveDown, editor::Editor, theme::vesper};
+use ratatui_code_editor::{actions::MoveDown, code::Edit, editor::{self, Editor}, theme::vesper};
 
 use ansi_to_tui::IntoText as _;
 
@@ -81,6 +81,11 @@ pub struct Split {
     vertical: u16,
 }
 
+pub struct EditorPane {
+    pane : Editor,
+    path : PathBuf,
+}
+
 pub struct App {
     input: Input,
     file_system: FileTree,
@@ -89,8 +94,8 @@ pub struct App {
     output: Vec<String>,
     output_pos: u16,
     focus: Focus,
-    editor: Option<Editor>,
-    open_file: Option<PathBuf>, //< TODO: Move into editor wrapper struct.
+    editor_panes: Vec<EditorPane>,
+    selected_editor: Option<usize>, 
     menu_screen: Option<MenuScreen>,
     event_rx : Receiver<Event>,
     // last_scroll: Instant, //< TODO: Move time markers into wrapper struct.
@@ -236,9 +241,8 @@ impl App {
 
         let (tx, rx) = unbounded();
 
-
-        thread::spawn(move || {
- 
+        /* Start up the background thread which will handle events */
+        thread::spawn(move || { 
             loop {
                 let event = event::read().unwrap();
                 let _ = tx.send(event);
@@ -253,8 +257,8 @@ impl App {
             output: Vec::new(),
             output_pos: 0,
             focus: Focus::FILES,
-            editor: None,
-            open_file: None,
+            editor_panes: Vec::new(),
+            selected_editor: None,
             menu_screen: None,
             event_rx: rx,
             //last_scroll: Instant::now(),
@@ -332,9 +336,7 @@ impl App {
         .split(main_area)[..] else {
             todo!()
         };
-
-        let editor_area = editor_area.inner(Margin::new(1, 0));
-
+ 
         let text = " > ".to_string() + self.input.get_input_to_render();
 
         let input_block = {
@@ -435,11 +437,39 @@ impl App {
         }
 
         // Render text editor and shell output. TODO: cleanup.
-        match &self.editor {
-            Some(editor) => {
-                frame.render_widget(editor, editor_area);
+        match self.selected_editor {
+            Some(index)  => {
+ 
+			        let tabs  = Tabs::new(self.editor_panes.iter().map(|editor| { 
+      		      editor.path
+          	      .file_name()
+            	    .to_owned()
+              	  .unwrap_or_default()
+                	.to_string_lossy()
+                	.to_string() 
+           	 		}).collect::<Vec<String>>())
+									.select(self.selected_editor.unwrap_or_default())
+									.style(Color::White)
+        					.highlight_style(Style::default().magenta().on_black().bold());
 
-                let cursor = editor.get_visible_cursor(&editor_area);
+                let editor = & self.editor_panes[index];
+
+                let [tabs_area, editor_area] = Layout::vertical([
+                        Constraint::Min(1),
+                        Constraint::Percentage(100)
+                    ]).split(editor_area)[..] 
+                else { 
+                    todo!() 
+                };
+
+                let tabs_area = tabs_area.inner(Margin::new(1, 0));
+                let editor_area = editor_area.inner(Margin::new(1, 0));
+                
+                frame.render_widget(&editor.pane, editor_area);
+                
+                frame.render_widget(tabs, tabs_area);
+
+                let cursor = editor.pane.get_visible_cursor(&editor_area);
 
                 if let Some((x, y)) = cursor {
                     frame.set_cursor_position(Position::new(x, y));
@@ -490,8 +520,8 @@ impl App {
 
         frame.render_widget(output, shell_output);
 
+        // Get a copy of the working directory for later. 
         let working_dir = self.shell.borrow().cwd().to_path_buf();
-
 
         // Render any popup menus
         let menu_screen = match &mut self.menu_screen {
@@ -545,6 +575,8 @@ impl App {
             }
 
             Some(MenuScreen::SEARCH(popup)) => {
+
+                /* Get bounds for the search layout. */
                 let frame_area = frame.area();
 
                 let popup_area_width = frame_area.width / 2;
@@ -559,7 +591,8 @@ impl App {
                     popup_area_width,
                     popup_area_height,
                 );
-
+                
+                /* Create 3 split areas and corresponding blocks, one for the search bar, one for the resulst, and a title bar. */
                 let [title_area, search_area, input_area] = Layout::vertical([
                     Constraint::Min(3),
                     Constraint::Fill(24),
@@ -596,7 +629,8 @@ impl App {
                         block 
                     }
                 };
-
+                
+                /* Render the search list of items. */
                 let popup_items = popup.get_list_items();
                 let popup_items: Vec<ListItem> = popup_items
                     .iter()
@@ -641,8 +675,8 @@ impl App {
                         ListItem::new(text).style(style)
                     })
                     .collect();
-
-                let popup_list = List::new(popup_items)
+                
+                 let popup_list = List::new(popup_items)
                     .block(search_block)
                     .highlight_style(
                         Style::default()
@@ -654,6 +688,7 @@ impl App {
 
                 frame.render_widget(Clear, popup_area);
 
+                /* Create search popup title. */
                 let title = format!(
                     "{} {} items ",
                     if popup.running() {
@@ -666,7 +701,8 @@ impl App {
 
                 let title = Paragraph::new(title).block(title_block).right_aligned();
                 frame.render_widget(title, title_area);
-
+                
+                /* Create the search progress bar. */ 
                 if popup.running() {
                     let refresh_time = 2.0;
 
@@ -724,28 +760,35 @@ impl App {
         file_area: &Rect,
         popup_area : Option<&(MenuScreenType, Rect)>
     ) -> io::Result<()> {
-
-        // TODO: Pull out all events in single pass. 
-        if let Ok(event) = self.event_rx.recv_timeout(Duration::from_millis(1)) {
+        
+        /* 
+         * Pull event - don't block forever as we need to keep rendering dynamic items. 
+         * Minimum frame rate is ~20 fps. TODO: Let this be user configurable.  
+         */ 
+        if let Ok(event) = self.event_rx.recv_timeout(Duration::from_millis(50)) {
            
-            //let string = format!("{:?}", event);
-            //self.output.push(string);
+            // Collect any events which have occured during the timeout to maintain responsiveness. 
+            let mut events = vec![event];
+            events.extend(self.event_rx.try_iter());
 
-            match event {
-                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                    self.handle_key_event(key_event, editor_area)
+            for event in events
+            {
+                match event {
+                    Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                        self.handle_key_event(key_event, editor_area);
+                    }
+                    Event::Mouse(mouse_event) => {
+                        self.handle_mouse_event(
+                            mouse_event,
+                            frame_area,
+                            editor_area,
+                            shell_area,
+                            file_area,
+                            popup_area
+                        );
+                    }
+                    _ => { /* Nothing to do. */ }
                 }
-                Event::Mouse(mouse_event) => {
-                    self.handle_mouse_event(
-                        mouse_event,
-                        frame_area,
-                        editor_area,
-                        shell_area,
-                        file_area,
-                        popup_area
-                    );
-                }
-                _ => { /* Nothing to do. */ }
             }
         }
         Ok(())
@@ -791,9 +834,23 @@ impl App {
         };
 
         let editor = Editor::new(&lang, content.as_str(), vesper()).unwrap();
+    
+        // TODO: Need to have a preview pane + actually open panes (click or enter to open).
+        
+        for (k, editor_pane) in self.editor_panes.iter().enumerate() {
+            
+            if editor_pane.path == *target_path {
+               self.selected_editor = Some(k);
+							 return; 
+            }
+        }
+    
+        self.editor_panes.push( EditorPane { pane: editor, path: target_path.clone() });
 
-        self.open_file = Some(target_path.clone());
-        self.editor = Some(editor);
+        self.selected_editor = match self.selected_editor {
+            Some(index) => Some(index + 1),
+            None               => Some(0)  
+        };
     }
 
     fn execute(&mut self, command: String) {
@@ -869,8 +926,8 @@ impl App {
         let y = mouse_event.row;
 
         if is_in_hitbox((x,y), editor_area) {
-            if let Some(editor) = &mut self.editor {
-                let _ = editor.mouse(mouse_event, editor_area);
+            if let Some(index) = self.selected_editor {
+                let _ = self.editor_panes[index].pane.mouse(mouse_event, editor_area);
             };
         }
 
@@ -925,11 +982,13 @@ impl App {
                             }
                             
                             return;
+                        } else {
+                            self.menu_screen = None;
                         }
-                    }   
-
+                    }
+  
                     if is_in_hitbox((x, y), editor_area) 
-                        && let Some(_editor) = &self.editor {
+                        && let Some(_) = &self.selected_editor {
                             self.focus = Focus::EDITOR(EditorFocus::MAIN);
                         
                     } else if is_in_hitbox((x, y), shell_area) {
@@ -963,14 +1022,18 @@ impl App {
                 if is_in_hitbox((x,y), shell_area)
                     && ( self.output_pos > 0) {
                    self.output_pos -= 1; 
-                }
+                } /* else if is_in_hitbox((x,y), file_area) {
+                    self.file_system.traverse_dirs(Direction::UP);
+                } */
             }
 
             MouseEventKind::ScrollUp => {
                 if is_in_hitbox((x,y), shell_area) 
                     && ((self.output_pos + 1) < (self.output.len() as u16)) {
                    self.output_pos += 1; 
-                }
+                } /* else if is_in_hitbox((x,y), file_area) {
+                    self.file_system.traverse_dirs(Direction::DOWN);
+                } */
             }
 
             _ => { /* Nothing to do. */ }
@@ -1027,8 +1090,8 @@ impl App {
                 }
                 Focus::EDITOR(editor_focus) => match editor_focus {
                     EditorFocus::MAIN => {
-                        if let Some(editor) = &mut self.editor {
-                            let _ = editor.input(key_event, editor_area);
+                        if let Some(index) = self.selected_editor {
+                            let _ = self.editor_panes[index].pane.input(key_event, editor_area);
                         };
                     }
                     EditorFocus::MENU => {
@@ -1048,12 +1111,9 @@ impl App {
                         self.input.handle_event(&Event::Key(key_event));
                     }
                     Focus::EDITOR(_) => {
-                        match &mut self.editor {
-                            Some(editor) => {
-                                let _ = editor.input(key_event, editor_area);
-                            }
-                            None => { /* Nothing to do */ }
-                        }
+                        if let Some(index) = self.selected_editor {
+                                let _ = self.editor_panes[index].pane.input(key_event, editor_area);
+                        };
                     }
                 }
             }
@@ -1096,13 +1156,13 @@ impl App {
                     self.focus = new_focus;
                     self.menu_screen = None;
 
-                    if let Some(editor) = &mut self.editor {
+                    if let Some(index) = self.selected_editor {
                         for _ in 0..(line_num - 1) {
-                            editor.apply(MoveDown { shift: false });
+                            self.editor_panes[index].pane.apply(MoveDown { shift: false });
                         }
 
                         // Force editor refresh.
-                        editor.focus(&editor_area);
+                        self.editor_panes[index].pane.focus(&editor_area);
                     }
                 }
             }
@@ -1110,7 +1170,7 @@ impl App {
             KeyCode::BackTab => match self.focus {
                 Focus::SEARCH => {}
                 Focus::FILES => {
-                    if let Some(_editor) = &self.editor {
+                    if let Some(_) = &self.selected_editor {
                         self.focus = Focus::EDITOR(EditorFocus::MAIN);
                     } else {
                         self.focus = Focus::SHELL;
@@ -1138,21 +1198,32 @@ impl App {
                 }
                 Focus::EDITOR(editor_focus) => match editor_focus {
                     EditorFocus::MAIN => {
-                        if let Some(editor) = &mut self.editor {
-                            let _ = editor.input(key_event, editor_area);
+                        if let Some(index) = self.selected_editor {
+                            let _ = self.editor_panes[index].pane.input(key_event, editor_area);
                         };
                     }
                     EditorFocus::MENU => {
                         let mut close_menu = false;
                         if let Some(MenuScreen::EDITOR(popup_menu)) = &mut self.menu_screen {
-                            if popup_menu.selected("Save?".to_owned()) {
-                                let content = self.editor.as_ref().unwrap().get_content();
 
-                                let _ = fs::write(self.open_file.as_ref().unwrap(), content);
+														// TODO: Need some saving stuff. 
+                            if popup_menu.selected("Save?".to_owned()) {
+                                // let content = self.editor.as_ref().unwrap().get_content();
+
+                                // let _ = fs::write(self.open_file.as_ref().unwrap(), content);
                             }
 
                             if popup_menu.selected("Exit?".to_owned()) {
-                                self.editor = None;
+																
+																if let Some(index) = self.selected_editor {
+																		self.editor_panes.remove(index);
+
+																		if self.editor_panes.len() == 0 {
+																				self.selected_editor = None;
+																		} else if self.editor_panes.len() <= index {
+																				self.selected_editor = Some(self.editor_panes.len() - 1);
+																		}																
+																};
 
                                 self.focus = Focus::FILES;
 
@@ -1187,12 +1258,9 @@ impl App {
                         self.input.handle_event(&Event::Key(key_event));
                     }
                     Focus::EDITOR(_) => {
-                        match &mut self.editor {
-                            Some(editor) => {
-                                let _ = editor.input(key_event, editor_area);
-                            }
-                            None => { /* Nothing to do */ }
-                        }
+                        if let Some(index) =self.selected_editor {
+                            let _ = self.editor_panes[index].pane.input(key_event, editor_area);
+                        };
                     }
                 }
             }
