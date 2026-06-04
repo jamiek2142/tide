@@ -455,14 +455,17 @@ impl App {
                 let editor = & self.editor_panes[index];
 
                 let [tabs_area, editor_area] = Layout::vertical([
-                        Constraint::Min(1),
+                        Constraint::Min(2),
                         Constraint::Percentage(100)
                     ]).split(editor_area)[..] 
                 else { 
                     todo!() 
                 };
-
+                
                 let tabs_area = tabs_area.inner(Margin::new(1, 0));
+
+                frame.render_widget(Block::new().borders(Borders::BOTTOM), tabs_area); 
+
                 let editor_area = editor_area.inner(Margin::new(1, 0));
                 
                 frame.render_widget(&editor.pane, editor_area);
@@ -1118,6 +1121,34 @@ impl App {
                 }
             }
 
+            KeyCode::Left => {
+
+                if let Some(index) = &mut self.selected_editor {
+                    
+                    if *index == 0 {
+                        *index = self.editor_panes.len().saturating_sub(1);
+                    } else {
+                        *index = index.saturating_sub(1);
+                    }
+                    
+                };
+                
+            }
+
+            KeyCode::Right => {
+
+                if let Some(index) = &mut self.selected_editor {
+                    
+                    if *index == (self.editor_panes.len() - 1) {
+                        *index = 0;
+                    } else {
+                        *index += 1;
+                    }
+                    
+                };
+                
+            }
+
             KeyCode::Tab if self.focus == Focus::FILES => {
                 let Some(selected) = self.file_system.get_selected_dir() else {
                     return;
@@ -1224,8 +1255,10 @@ impl App {
 																				self.selected_editor = Some(self.editor_panes.len() - 1);
 																		}																
 																};
-
-                                self.focus = Focus::FILES;
+                                
+                                if ! self.selected_editor.is_some() {
+                                    self.focus = Focus::FILES;
+                                }
 
                                 close_menu = true;
                             }
