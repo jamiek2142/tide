@@ -223,9 +223,9 @@ impl FileTree {
         self.current_path = path;
     }
 
-    pub fn toggle_dir(&mut self, change_dir: bool) -> bool {
+    pub fn toggle_dir(&mut self, change_dir: bool) -> Option<&Path> {
         let Some(index) = self.list_state.selected() else {
-            return false;
+            return None;
         };
 
         // Handle special case for index 0 to move up a directory.
@@ -251,12 +251,12 @@ impl FileTree {
 
             self.change_dir(target_path);
 
-            return true;
+            return None;
         }
 
         // Return if this wasn't a
         if !self.file_entries[index].is_dir {
-            return false;
+            return Some(&self.file_entries[index].path);
         }
 
         if self.file_entries[index].expanded {
@@ -271,7 +271,7 @@ impl FileTree {
 
             self.file_entries[index].expanded = true;
         }
-        true
+        None
     }
 
     pub fn iter(&self) -> Iter<'_, FileEntry> {

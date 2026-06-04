@@ -26,14 +26,14 @@ use pathdiff::diff_paths;
 
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Layout, Margin, Position, Rect, Spacing, Offset},
+    layout::{Constraint, Layout, Margin, Position, Rect, Spacing},
     style::{Color, Modifier, Style},
     symbols::merge::MergeStrategy,
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph, Tabs},
 };
 
-use ratatui_code_editor::{actions::MoveDown, code::Edit, editor::{self, Editor}, theme::vesper};
+use ratatui_code_editor::{actions::MoveDown, editor::Editor, theme::vesper};
 
 use ansi_to_tui::IntoText as _;
 
@@ -94,6 +94,7 @@ pub struct App {
     output: Vec<String>,
     output_pos: u16,
     focus: Focus,
+    preview_pane: Option<EditorPane>,
     editor_panes: Vec<EditorPane>,
     selected_editor: Option<usize>, 
     menu_screen: Option<MenuScreen>,
@@ -257,6 +258,7 @@ impl App {
             output: Vec::new(),
             output_pos: 0,
             focus: Focus::FILES,
+            preview_pane: None,
             editor_panes: Vec::new(),
             selected_editor: None,
             menu_screen: None,
@@ -461,17 +463,21 @@ impl App {
                 else { 
                     todo!() 
                 };
-                
-                let tabs_area = tabs_area.inner(Margin::new(1, 0));
 
+                let tabs_area = tabs_area.inner(Margin::new(1, 0));
+                
                 frame.render_widget(Block::new().borders(Borders::BOTTOM), tabs_area); 
 
                 let editor_area = editor_area.inner(Margin::new(1, 0));
                 
-                frame.render_widget(&editor.pane, editor_area);
+                if let Some(preview_editor) = &mut self.preview_pane {
+                    frame.render_widget(&preview_editor.pane,editor_area); 
+                } else {
+                    frame.render_widget(&editor.pane, editor_area);
+                };
                 
                 frame.render_widget(tabs, tabs_area);
-
+                
                 let cursor = editor.pane.get_visible_cursor(&editor_area);
 
                 if let Some((x, y)) = cursor {
@@ -479,6 +485,15 @@ impl App {
                 }
             }
             None => {
+                
+                if let Some(preview_editor) = &mut self.preview_pane {
+
+                    let editor_area = editor_area.inner(Margin::new(1, 0));
+
+                    frame.render_widget(&preview_editor.pane,editor_area);
+
+                } else {
+               
                 let help = match &self.focus {
                     Focus::FILES | Focus::SEARCH | Focus::SHELL => {
                         vec![
@@ -518,6 +533,7 @@ impl App {
                     );
                     frame.render_widget(text, area);
                 }
+                };
             }
         }
 
@@ -806,7 +822,7 @@ impl App {
         self.file_system.change_dir(target_path);
     }
 
-    fn open_file(&mut self, target_path: &PathBuf) {
+    fn load_file(&mut self, target_path: &PathBuf) -> Option<Editor> {
         let extension_to_language_map = HashMap::from([
             ("", ""),
             ("c", "c"),
@@ -819,10 +835,10 @@ impl App {
         let content = if target_path.exists() {
             match fs::read_to_string(target_path) {
                 Ok(ok) => ok,
-                Err(_err) => return,
+                Err(_err) => return None,
             }
         } else {
-            return;
+            return None;
         };
         let extension = target_path
             .extension()
@@ -836,10 +852,24 @@ impl App {
             }
         };
 
-        let editor = Editor::new(&lang, content.as_str(), vesper()).unwrap();
-    
-        // TODO: Need to have a preview pane + actually open panes (click or enter to open).
+        Some(Editor::new(&lang, content.as_str(), vesper()).expect("Failed to open editor"))
+    }
+
+    fn preview_file(&mut self, target_path: &PathBuf) {
         
+        let Some(editor) = self.load_file(target_path) else {
+            return;
+        };
+
+        self.preview_pane = Some(EditorPane { pane : editor, path : target_path.clone() });
+    }
+
+    fn open_file(&mut self, target_path: &PathBuf) {
+        
+        let Some(editor) = self.load_file(target_path) else {
+            return;
+        }; 
+
         for (k, editor_pane) in self.editor_panes.iter().enumerate() {
             
             if editor_pane.path == *target_path {
@@ -847,7 +877,8 @@ impl App {
 							 return; 
             }
         }
-    
+            
+        self.preview_pane = None;
         self.editor_panes.push( EditorPane { pane: editor, path: target_path.clone() });
         self.selected_editor = Some(self.editor_panes.len() - 1);  
         
@@ -989,6 +1020,7 @@ impl App {
   
                     if is_in_hitbox((x, y), editor_area) 
                         && let Some(_) = &self.selected_editor {
+                            self.preview_pane = None;
                             self.focus = Focus::EDITOR(EditorFocus::MAIN);
                         
                     } else if is_in_hitbox((x, y), shell_area) {
@@ -1082,7 +1114,7 @@ impl App {
                         .file_system
                         .traverse_dirs(Direction::from(key_event.code))
                     {
-                        self.open_file(&file);
+                        self.preview_file(&file);
                     }
                 }
                 Focus::SHELL => {
@@ -1173,6 +1205,7 @@ impl App {
                         line_num = item.metadata().1.unwrap_or(1);
 
                         self.open_file(&path);
+                        self.preview_pane = None;
 
                         Focus::EDITOR(EditorFocus::MAIN)
                     }
@@ -1217,7 +1250,11 @@ impl App {
                     }
                 }
                 Focus::FILES => {
-                    if !self.file_system.toggle_dir(false) {
+                    if let Some(path) = self.file_system.toggle_dir(false) {
+                        let target_path = path.to_path_buf();
+                        self.open_file(&target_path);
+
+                        self.preview_pane = None;
                         self.focus = Focus::EDITOR(EditorFocus::MAIN);
                     }
                 }
