@@ -470,10 +470,17 @@ impl App {
 
                 let editor_area = editor_area.inner(Margin::new(1, 0));
                 
+                frame.render_widget(&editor.pane, editor_area);
+
                 if let Some(preview_editor) = &mut self.preview_pane {
-                    frame.render_widget(&preview_editor.pane,editor_area); 
-                } else {
-                    frame.render_widget(&editor.pane, editor_area);
+
+                    let preview_area = editor_area.inner(Margin::new(10, 2));
+
+                    frame.render_widget(Clear, preview_area);
+                    frame.render_widget(Block::bordered(), preview_area);
+                    let preview_area = preview_area.inner(Margin::new(1,1));
+
+                    frame.render_widget(&preview_editor.pane,preview_area); 
                 };
                 
                 frame.render_widget(tabs, tabs_area);
@@ -489,8 +496,15 @@ impl App {
                 if let Some(preview_editor) = &mut self.preview_pane {
 
                     let editor_area = editor_area.inner(Margin::new(1, 0));
+                    
+                    let preview_area = editor_area.inner(Margin::new(10, 2));
 
-                    frame.render_widget(&preview_editor.pane,editor_area);
+                    frame.render_widget(Clear, preview_area);
+                    frame.render_widget(Block::bordered(), preview_area);
+                    let preview_area = preview_area.inner(Margin::new(1,1));
+
+
+                    frame.render_widget(&preview_editor.pane,preview_area);
 
                 } else {
                
