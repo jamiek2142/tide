@@ -165,8 +165,8 @@ impl From<MouseEventKind> for Direction {
 impl Default for Split {
     fn default() -> Self {
         Self {
-            horizontal: 30,
-            vertical: 50,
+            horizontal: 20,
+            vertical: 80,
         }
     }
 }
@@ -849,11 +849,8 @@ impl App {
         }
     
         self.editor_panes.push( EditorPane { pane: editor, path: target_path.clone() });
-
-        self.selected_editor = match self.selected_editor {
-            Some(index) => Some(index + 1),
-            None               => Some(0)  
-        };
+        self.selected_editor = Some(self.editor_panes.len() - 1);  
+        
     }
 
     fn execute(&mut self, command: String) {
