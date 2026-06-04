@@ -1089,6 +1089,12 @@ impl App {
     fn handle_key_event(&mut self, key_event: KeyEvent, editor_area: &Rect) {
         match key_event.code {
             KeyCode::Esc => {
+                
+                if let Some(_) = self.preview_pane {
+                    self.preview_pane = None;
+                    return;
+                };
+
                 match &self.focus {
                     Focus::SHELL | Focus::FILES => self.exit(),
                     Focus::SEARCH => {
