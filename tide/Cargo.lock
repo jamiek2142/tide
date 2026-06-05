@@ -2038,7 +2038,7 @@ dependencies = [
 
 [[package]]
 name = "tide"
-version = "0.2.10"
+version = "0.2.11"
 dependencies = [
  "ansi-to-tui",
  "anyhow",

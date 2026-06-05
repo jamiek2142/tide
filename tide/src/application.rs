@@ -439,7 +439,7 @@ impl App {
         }
 
         // Render text editor and shell output. TODO: cleanup.
-        match self.selected_editor {
+        let editor_area = match self.selected_editor {
             Some(index)  => {
  
 			        let tabs  = Tabs::new(self.editor_panes.iter().map(|editor| { 
@@ -490,6 +490,8 @@ impl App {
                 if let Some((x, y)) = cursor {
                     frame.set_cursor_position(Position::new(x, y));
                 }
+
+                editor_area
             }
             None => {
                 
@@ -505,7 +507,8 @@ impl App {
 
 
                     frame.render_widget(&preview_editor.pane,preview_area);
-
+                    
+                    editor_area
                 } else {
                
                 let help = match &self.focus {
@@ -546,10 +549,12 @@ impl App {
                         Constraint::Length(len),
                     );
                     frame.render_widget(text, area);
+
                 }
-                };
+                    Rect::default()
+                }
             }
-        }
+        };
 
         frame.render_widget(output, shell_output);
 
@@ -1172,6 +1177,13 @@ impl App {
 
             KeyCode::Left => {
 
+                if let Focus::EDITOR(_) = self.focus {
+                    if let Some(index) = self.selected_editor {
+                        let _ = self.editor_panes[index].pane.input(key_event, editor_area);
+                    };
+                    return;
+                }
+
                 if let Some(index) = &mut self.selected_editor {
                     
                     if *index == 0 {
@@ -1185,6 +1197,13 @@ impl App {
             }
 
             KeyCode::Right => {
+
+                if let Focus::EDITOR(_) = self.focus {
+                    if let Some(index) = self.selected_editor {
+                        let _ = self.editor_panes[index].pane.input(key_event, editor_area);
+                    };
+                    return;
+                }
 
                 if let Some(index) = &mut self.selected_editor {
                     
@@ -1291,11 +1310,16 @@ impl App {
                         let mut close_menu = false;
                         if let Some(MenuScreen::EDITOR(popup_menu)) = &mut self.menu_screen {
 
-														// TODO: Need some saving stuff. 
                             if popup_menu.selected("Save?".to_owned()) {
-                                // let content = self.editor.as_ref().unwrap().get_content();
 
-                                // let _ = fs::write(self.open_file.as_ref().unwrap(), content);
+                                if let Some(index) = self.selected_editor {
+                                    let editor = &self.editor_panes[index];
+
+                                    let content = editor.pane.get_content();
+
+                                    let _ = fs::write(editor.path.clone(), content);
+
+                                };
                             }
 
                             if popup_menu.selected("Exit?".to_owned()) {
