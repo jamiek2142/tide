@@ -2,7 +2,7 @@
  * Copyright 2026, Tide Project
  *****************************************************/
 
-use crate::file_system::FileTree;
+use crate::file_system::{FileTree, FileType};
 use crate::input::Input;
 use crate::popup_menu::PopupMenu;
 use crate::search::SearchItemType;
@@ -20,7 +20,7 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, unbounded};
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind};
 
 use pathdiff::diff_paths;
 
@@ -841,7 +841,7 @@ impl App {
         self.file_system.change_dir(target_path);
     }
 
-    fn load_file(&mut self, target_path: &PathBuf) -> Option<Editor> {
+    fn load_file(&mut self, target_path: &Path) -> Option<Editor> {
         let extension_to_language_map = HashMap::from([
             ("", ""),
             ("c", "c"),
@@ -874,16 +874,16 @@ impl App {
         Some(Editor::new(&lang, content.as_str(), vesper()).expect("Failed to open editor"))
     }
 
-    fn preview_file(&mut self, target_path: &PathBuf) {
+    fn preview_file(&mut self, target_path: &Path) {
         
         let Some(editor) = self.load_file(target_path) else {
             return;
         };
 
-        self.preview_pane = Some(EditorPane { pane : editor, path : target_path.clone() });
+        self.preview_pane = Some(EditorPane { pane : editor, path : target_path.to_path_buf() });
     }
 
-    fn open_file(&mut self, target_path: &PathBuf) {
+    fn open_file(&mut self, target_path: &Path) {
         
         let Some(editor) = self.load_file(target_path) else {
             return;
@@ -892,13 +892,14 @@ impl App {
         for (k, editor_pane) in self.editor_panes.iter().enumerate() {
             
             if editor_pane.path == *target_path {
+               self.preview_pane = None;
                self.selected_editor = Some(k);
 							 return; 
             }
         }
             
         self.preview_pane = None;
-        self.editor_panes.push( EditorPane { pane: editor, path: target_path.clone() });
+        self.editor_panes.push( EditorPane { pane: editor, path: target_path.to_path_buf() });
         self.selected_editor = Some(self.editor_panes.len() - 1);  
         
     }
@@ -1069,6 +1070,35 @@ impl App {
                 }
             }
 
+            MouseEventKind::ScrollRight => {
+                
+                if let Some(index) = &mut self.selected_editor {
+                    
+                    if *index == (self.editor_panes.len() - 1) {
+                        *index = 0;
+                    } else {
+                        *index += 1;
+                    }
+                    
+                };
+              
+            }
+
+            MouseEventKind::ScrollLeft => {
+                
+                if let Some(index) = &mut self.selected_editor {
+                    
+                    if *index == 0 {
+                        *index = self.editor_panes.len().saturating_sub(1);
+                    } else {
+                        *index = index.saturating_sub(1);
+                    }
+                    
+                };
+               
+            }
+
+
             MouseEventKind::ScrollDown => {
                 if is_in_hitbox((x,y), shell_area)
                     && ( self.output_pos > 0) {
@@ -1176,12 +1206,15 @@ impl App {
             }
 
             KeyCode::Left => {
-
-                if let Focus::EDITOR(_) = self.focus {
-                    if let Some(index) = self.selected_editor {
-                        let _ = self.editor_panes[index].pane.input(key_event, editor_area);
-                    };
-                    return;
+                
+                if ! key_event.modifiers.contains(KeyModifiers::SHIFT)
+                {
+                    if let Focus::EDITOR(_) = self.focus {
+                        if let Some(index) = self.selected_editor {
+                            let _ = self.editor_panes[index].pane.input(key_event, editor_area);
+                        };
+                        return;
+                    }
                 }
 
                 if let Some(index) = &mut self.selected_editor {
@@ -1197,12 +1230,15 @@ impl App {
             }
 
             KeyCode::Right => {
-
-                if let Focus::EDITOR(_) = self.focus {
-                    if let Some(index) = self.selected_editor {
-                        let _ = self.editor_panes[index].pane.input(key_event, editor_area);
-                    };
-                    return;
+                
+                if ! key_event.modifiers.contains(KeyModifiers::SHIFT)
+                {
+                    if let Focus::EDITOR(_) = self.focus {
+                        if let Some(index) = self.selected_editor {
+                            let _ = self.editor_panes[index].pane.input(key_event, editor_area);
+                        };
+                        return;
+                    }
                 }
 
                 if let Some(index) = &mut self.selected_editor {
@@ -1218,12 +1254,24 @@ impl App {
             }
 
             KeyCode::Tab if self.focus == Focus::FILES => {
-                let Some(selected) = self.file_system.get_selected_dir() else {
-                    return;
-                };
-                let selected = selected.to_path_buf();
+                match self.file_system.get_selected() {
+                    
+                    FileType::Directory(path) => {
+                        
+                        self.change_dir(&path);
 
-                self.change_dir(&selected);
+                    }
+
+                    FileType::File(path) => {
+                        
+                        self.open_file(&path);
+                    }
+
+                    FileType::None => {
+
+                    }
+
+                }
             }
 
             KeyCode::Tab if self.focus == Focus::SEARCH => {

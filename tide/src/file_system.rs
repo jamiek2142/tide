@@ -40,6 +40,13 @@ pub struct FileTree {
     shell: Rc<RefCell<Shell>>,
 }
 
+
+pub enum FileType<T> {
+    File(T),
+    Directory(T),
+    None
+}
+
 /*****************************************************
  * Implementations
  *****************************************************/
@@ -167,15 +174,15 @@ impl FileTree {
         }
     }
 
-    pub fn get_selected_dir(&self) -> Option<&Path> {
+    pub fn get_selected (&self) -> FileType<PathBuf> {
         let Some(selected) = self.list_state.selected() else {
-            return None;
+            return FileType::None;
         };
 
         if self.file_entries[selected].is_dir {
-            Some(&self.file_entries[selected].path)
+            FileType::Directory(self.file_entries[selected].path.clone())
         } else {
-            None
+            FileType::File(self.file_entries[selected].path.clone())
         }
     }
 
