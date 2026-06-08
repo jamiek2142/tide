@@ -15,6 +15,7 @@ use crate::search::SearchItemType;
 use crate::search::menu::SearchMenu;
 use crate::shell::Shell;
 
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::{
     cell::RefCell, collections::HashMap, fs, io, path::{Path, PathBuf}, rc::Rc, thread, time::{Duration, Instant}
 };
@@ -84,6 +85,7 @@ pub struct Split {
 pub struct EditorPane {
     pane : Editor,
     path : PathBuf,
+    hash : u64
 }
 
 pub struct App {
@@ -442,13 +444,21 @@ impl App {
         let editor_area = match self.selected_editor {
             Some(index)  => {
  
-			        let tabs  = Tabs::new(self.editor_panes.iter().map(|editor| { 
-      		      editor.path
+			        let tabs  = Tabs::new(self.editor_panes.iter().map(|editor| {
+
+      		      let mut hasher = DefaultHasher::new();
+                let content = editor.pane.get_content();
+
+                content.hash(&mut hasher);
+
+                let hash = hasher.finish(); 
+
+                editor.path
           	      .file_name()
             	    .to_owned()
               	  .unwrap_or_default()
                 	.to_string_lossy()
-                	.to_string() 
+                	.to_string() + if hash != editor.hash { "*" } else { "" } 
            	 		}).collect::<Vec<String>>())
 									.select(self.selected_editor.unwrap_or_default())
 									.style(Color::White)
@@ -841,7 +851,7 @@ impl App {
         self.file_system.change_dir(target_path);
     }
 
-    fn load_file(&mut self, target_path: &Path) -> Option<Editor> {
+    fn load_file(&mut self, target_path: &Path) -> Option<(Editor, u64)>  {
         let extension_to_language_map = HashMap::from([
             ("", ""),
             ("c", "c"),
@@ -870,36 +880,40 @@ impl App {
                 "shell".to_string()
             }
         };
+            
+        let mut hasher = DefaultHasher::new();
+        
+        content.hash(&mut hasher);
 
-        Some(Editor::new(&lang, content.as_str(), vesper()).expect("Failed to open editor"))
+
+        Some((Editor::new(&lang, content.as_str(), vesper()).expect("Failed to open editor"), hasher.finish()))
     }
 
     fn preview_file(&mut self, target_path: &Path) {
         
-        let Some(editor) = self.load_file(target_path) else {
+        let Some((editor, hash)) = self.load_file(target_path) else {
             return;
         };
-
-        self.preview_pane = Some(EditorPane { pane : editor, path : target_path.to_path_buf() });
+ 
+        self.preview_pane = Some(EditorPane { pane : editor, path : target_path.to_path_buf(), hash : hash});
     }
 
     fn open_file(&mut self, target_path: &Path) {
         
-        let Some(editor) = self.load_file(target_path) else {
-            return;
-        }; 
-
-        for (k, editor_pane) in self.editor_panes.iter().enumerate() {
-            
+        for (k, editor_pane) in self.editor_panes.iter().enumerate() {    
             if editor_pane.path == *target_path {
                self.preview_pane = None;
                self.selected_editor = Some(k);
 							 return; 
             }
         }
-            
+        
+        let Some((editor, hash)) = self.load_file(target_path) else {
+            return;
+        }; 
+ 
         self.preview_pane = None;
-        self.editor_panes.push( EditorPane { pane: editor, path: target_path.to_path_buf() });
+        self.editor_panes.push( EditorPane { pane: editor, path: target_path.to_path_buf(), hash: hash });
         self.selected_editor = Some(self.editor_panes.len() - 1);  
         
     }
@@ -1363,10 +1377,19 @@ impl App {
                                 if let Some(index) = self.selected_editor {
                                     let editor = &self.editor_panes[index];
 
-                                    let content = editor.pane.get_content();
+                                    let content = &editor.pane.get_content();
 
                                     let _ = fs::write(editor.path.clone(), content);
+                                       
+                                    let mut hasher = DefaultHasher::new();
 
+                                    content.hash(&mut hasher);
+
+                                    let hash = hasher.finish();
+
+                                    self.editor_panes[index].hash = hash;
+
+                                    close_menu = true;
                                 };
                             }
 
