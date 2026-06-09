@@ -15,7 +15,6 @@ use crate::search::SearchItemType;
 use crate::search::menu::SearchMenu;
 use crate::shell::Shell;
 
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::{
     cell::RefCell, collections::HashMap, fs, io, path::{Path, PathBuf}, rc::Rc, thread, time::{Duration, Instant}
 };
@@ -446,12 +445,8 @@ impl App {
  
 			        let tabs  = Tabs::new(self.editor_panes.iter().map(|editor| {
 
-      		      let mut hasher = DefaultHasher::new();
-                let content = editor.pane.get_content();
-
-                content.hash(&mut hasher);
-
-                let hash = hasher.finish(); 
+      		      let content = editor.pane.get_content();
+                let hash = crc64::crc64(0, content.as_bytes());
 
                 editor.path
           	      .file_name()
@@ -881,12 +876,8 @@ impl App {
             }
         };
             
-        let mut hasher = DefaultHasher::new();
         
-        content.hash(&mut hasher);
-
-
-        Some((Editor::new(&lang, content.as_str(), vesper()).expect("Failed to open editor"), hasher.finish()))
+        Some((Editor::new(&lang, content.as_str(), vesper()).expect("Failed to open editor"), crc64::crc64(0, content.as_bytes())))
     }
 
     fn preview_file(&mut self, target_path: &Path) {
@@ -1381,12 +1372,8 @@ impl App {
 
                                     let _ = fs::write(editor.path.clone(), content);
                                        
-                                    let mut hasher = DefaultHasher::new();
-
-                                    content.hash(&mut hasher);
-
-                                    let hash = hasher.finish();
-
+                                    
+                                    let hash = crc64::crc64(0, content.as_bytes()); 
                                     self.editor_panes[index].hash = hash;
 
                                     close_menu = true;
