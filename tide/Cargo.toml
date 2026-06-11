@@ -1,6 +1,6 @@
 [package]
 name = "tide"
-version = "0.2.13"
+version = "0.2.14"
 description = "Terminal-based IDE"
 license = "MIT"
 edition = "2024"
