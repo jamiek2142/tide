@@ -519,13 +519,13 @@ impl App {
                 let help = match &self.focus {
                     Focus::FILES | Focus::SEARCH | Focus::SHELL => {
                         vec![
-                            ("Tab", "Change directory"),
-                            ("Enter", "Expand directory"),
+                            ("Tab", "Change directory | Load File"),
+                            ("Enter", "Expand directory | Open File"),
                             ("Shift + Tab", "Cycle panes"),
                             ("Esc", "Exit focus"),
                             ("Up", "Scroll up"),
                             ("Down", "Scroll down"),
-                            ("Forward Slash", "Search current directory"),
+                            ("?", "Open search menu")
                         ]
                     }
                     _ => {
@@ -635,7 +635,7 @@ impl App {
                     popup_area_height,
                 );
                 
-                /* Create 3 split areas and corresponding blocks, one for the search bar, one for the resulst, and a title bar. */
+                /* Create 3 split areas and corresponding blocks, one for the search bar, one for the results, and a title bar. */
                 let [title_area, search_area, input_area] = Layout::vertical([
                     Constraint::Min(3),
                     Constraint::Fill(24),
@@ -1135,8 +1135,24 @@ impl App {
                     return;
                 };
 
+     
                 match &self.focus {
-                    Focus::SHELL | Focus::FILES => self.exit(),
+                    Focus::SHELL | Focus::FILES => {
+                    
+                        if let Some(_index) = self.selected_editor {
+                            
+                            self.menu_screen = Some(MenuScreen::EDITOR(
+                                PopupMenu::default()
+                                    // TODO: Only add save if contents have changed.
+                                    .add_field("Save?".to_owned())
+                                    .add_field("Exit?".to_owned()),
+                            ));
+                            self.focus = Focus::EDITOR(EditorFocus::MENU);
+
+                            return; 
+                        };
+                        self.exit()
+                    }  
                     Focus::SEARCH => {
                         // Cleanup after leaving search
                         if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
@@ -1150,6 +1166,7 @@ impl App {
                         EditorFocus::MAIN => {
                             self.menu_screen = Some(MenuScreen::EDITOR(
                                 PopupMenu::default()
+                                    // TOOD: Only add save if contents have changed
                                     .add_field("Save?".to_owned())
                                     .add_field("Exit?".to_owned()),
                             ));
@@ -1407,9 +1424,16 @@ impl App {
                 },
             },
 
-            KeyCode::Char('/') => {
+            KeyCode::Char('?') => {
                 // TODO: Apply some context about what we should search based on previous focus
-                self.menu_screen = Some(MenuScreen::SEARCH(SearchMenu::default()));
+                
+                let file_path = if let Some(index) = & self.selected_editor {
+                    Some(&self.editor_panes[*index].path)
+                } else {
+                    None
+                };
+                
+                self.menu_screen = Some(MenuScreen::SEARCH(SearchMenu::new(file_path.map(|v| &**v))));
                 self.focus = Focus::SEARCH;
             }
 

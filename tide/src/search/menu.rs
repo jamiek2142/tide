@@ -6,7 +6,7 @@
  * Crates
  *****************************************************/
 
-use std::{path::Path, sync::mpsc::Receiver};
+use std::{path::{Path, PathBuf}, sync::mpsc::Receiver};
 
 use crate::application::Direction;
 use crate::input::Input;
@@ -28,6 +28,7 @@ pub struct SearchMenu {
     popup: PopupMenu<(u32, SearchItem)>,
     handle: Option<SearchHandle>,
     n_items: usize,
+    file : Option<PathBuf>
 }
 
 /*****************************************************
@@ -35,6 +36,17 @@ pub struct SearchMenu {
  *****************************************************/
 
 impl SearchMenu {
+    
+    pub fn new (file_to_search : Option<&Path>) -> Self {
+        Self {
+            input : Input::default(),
+            popup : PopupMenu::default(),
+            handle : Option::default(),
+            n_items : usize::default(),
+            file : file_to_search.map(|file| file.to_path_buf())
+        }
+    }
+
     pub fn add_field(&mut self, score: u32, item: SearchItem) {
         self.n_items += 1;
 
@@ -109,10 +121,12 @@ impl SearchMenu {
             return;
         }
         self.cleanup();
+        
+        let path = if let Some(path) = & self.file { path } else { cwd }; 
 
         let query = self.input.get_input_to_render();
 
-        self.handle = Some(search::search(cwd, query));
+        self.handle = Some(search::search(path, query));
     }
 
     pub fn handle_event(&mut self, event: &Event) {
