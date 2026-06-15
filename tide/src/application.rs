@@ -519,8 +519,8 @@ impl App {
                 let help = match &self.focus {
                     Focus::FILES | Focus::SEARCH | Focus::SHELL => {
                         vec![
-                            ("Tab", "Change directory | Load File"),
-                            ("Enter", "Expand directory | Open File"),
+                            ("Tab", "Expand directory | Load File"),
+                            ("Enter", "Change directory | Open File"),
                             ("Shift + Tab", "Cycle panes"),
                             ("Esc", "Exit focus"),
                             ("Up", "Scroll up"),
@@ -1127,6 +1127,10 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent, editor_area: &Rect) {
+
+        //let debug = format!("{:?}", key_event);
+        //self.output.push(debug);
+
         match key_event.code {
             KeyCode::Esc => {
                 
@@ -1139,14 +1143,34 @@ impl App {
                 match &self.focus {
                     Focus::SHELL | Focus::FILES => {
                     
-                        if let Some(_index) = self.selected_editor {
+                        if let Some(index) = self.selected_editor {
+
+                            let popup_menu = PopupMenu::default();
                             
-                            self.menu_screen = Some(MenuScreen::EDITOR(
-                                PopupMenu::default()
-                                    // TODO: Only add save if contents have changed.
-                                    .add_field("Save?".to_owned())
-                                    .add_field("Exit?".to_owned()),
-                            ));
+                            let content = self.editor_panes[index].pane.get_content();
+                                    
+                            let hash = crc64::crc64(0, content.as_bytes()); 
+                            self.editor_panes[index].hash = hash;
+
+                            let popup_menu = if self.editor_panes[index].hash != hash {
+                                popup_menu.add_field("Save?".to_owned())
+                            } else {
+                                if let Some(index) = self.selected_editor {
+																		self.editor_panes.remove(index);
+
+																    if self.editor_panes.len() == 0 {
+																		    self.selected_editor = None;
+																    } else if self.editor_panes.len() <= index {
+																		    self.selected_editor = Some(self.editor_panes.len() - 1);
+																    }
+
+                                    return
+												        } else { 
+                                    popup_menu
+                                }                            
+                            }.add_field("Exit?".to_owned());
+                                                           
+                            self.menu_screen = Some(MenuScreen::EDITOR(popup_menu));
                             self.focus = Focus::EDITOR(EditorFocus::MENU);
 
                             return; 
@@ -1164,13 +1188,37 @@ impl App {
                     }
                     Focus::EDITOR(editor_focus) => match editor_focus {
                         EditorFocus::MAIN => {
-                            self.menu_screen = Some(MenuScreen::EDITOR(
-                                PopupMenu::default()
-                                    // TOOD: Only add save if contents have changed
-                                    .add_field("Save?".to_owned())
-                                    .add_field("Exit?".to_owned()),
-                            ));
-                            self.focus = Focus::EDITOR(EditorFocus::MENU);
+                            
+                            if let Some(index) = self.selected_editor {
+
+                                let popup_menu = PopupMenu::default();
+                                let content = self.editor_panes[index].pane.get_content();
+                                    
+                                let hash = crc64::crc64(0, content.as_bytes()); 
+                                self.editor_panes[index].hash = hash;
+
+                                let popup_menu = if self.editor_panes[index].hash != hash {
+                                    popup_menu.add_field("Save?".to_owned())
+                                } else {
+                                    
+                                    if let Some(index) = self.selected_editor {
+																		    self.editor_panes.remove(index);
+
+																		    if self.editor_panes.len() == 0 {
+																				    self.selected_editor = None;
+																		    } else if self.editor_panes.len() <= index {
+																				    self.selected_editor = Some(self.editor_panes.len() - 1);
+																		    }
+
+                                        return
+																    } else { 
+                                        popup_menu
+                                    }
+                                }.add_field("Exit?".to_owned());
+                                                           
+                                self.menu_screen = Some(MenuScreen::EDITOR(popup_menu));
+                                self.focus = Focus::EDITOR(EditorFocus::MENU);
+                            }
                         }
 
                         EditorFocus::MENU => {
@@ -1189,10 +1237,12 @@ impl App {
                 Focus::FILES => {
                     if let Some(file) = self
                         .file_system
-                        .traverse_dirs(Direction::from(key_event.code))
-                    {
+                        .traverse_dirs(Direction::from(key_event.code)) {
                         self.preview_file(&file);
+                    } else {
+                        self.preview_pane = None;
                     }
+            
                 }
                 Focus::SHELL => {
                     self.input.handle_event(&Event::Key(key_event));
@@ -1227,18 +1277,9 @@ impl App {
                 }
             }
 
-            KeyCode::Left => {
-                
-                if ! key_event.modifiers.contains(KeyModifiers::SHIFT)
-                {
-                    if let Focus::EDITOR(_) = self.focus {
-                        if let Some(index) = self.selected_editor {
-                            let _ = self.editor_panes[index].pane.input(key_event, editor_area);
-                        };
-                        return;
-                    }
-                }
-
+            // macOS specific keybinding.
+            KeyCode::Char('b') if key_event.modifiers.contains(KeyModifiers::ALT) => {
+               
                 if let Some(index) = &mut self.selected_editor {
                     
                     if *index == 0 {
@@ -1251,17 +1292,8 @@ impl App {
                 
             }
 
-            KeyCode::Right => {
-                
-                if ! key_event.modifiers.contains(KeyModifiers::SHIFT)
-                {
-                    if let Focus::EDITOR(_) = self.focus {
-                        if let Some(index) = self.selected_editor {
-                            let _ = self.editor_panes[index].pane.input(key_event, editor_area);
-                        };
-                        return;
-                    }
-                }
+            // macOS specific keybinding.
+            KeyCode::Char('f') if key_event.modifiers.contains(KeyModifiers::ALT) => {
 
                 if let Some(index) = &mut self.selected_editor {
                     
@@ -1275,24 +1307,12 @@ impl App {
                 
             }
 
-            KeyCode::Tab if self.focus == Focus::FILES => {
-                match self.file_system.get_selected() {
-                    
-                    FileType::Directory(path) => {
-                        
-                        self.change_dir(&path);
+            KeyCode::Enter if self.focus == Focus::FILES => {
 
-                    }
-
-                    FileType::File(path) => {
-                        
-                        self.open_file(&path);
-                    }
-
-                    FileType::None => {
-
-                    }
-
+                match self.file_system.get_selected() {                    
+                    FileType::Directory(path) => self.change_dir(&path),
+                    FileType::File(path) => self.open_file(&path),
+                    FileType::None => { /* Nothing to do. */ }
                 }
             }
 
@@ -1349,16 +1369,8 @@ impl App {
                 Focus::EDITOR(_) => self.focus = Focus::SHELL,
                 Focus::SHELL => self.focus = Focus::FILES,
             },
-
-            KeyCode::Enter => match &self.focus {
-                Focus::SEARCH => {
-                    let cwd = self.shell.borrow().cwd().to_path_buf();
-
-                    if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
-                        popup.search(&cwd);
-                    }
-                }
-                Focus::FILES => {
+            
+            KeyCode::Tab if self.focus == Focus::FILES => {
                     if let Some(path) = self.file_system.toggle_dir(false) {
                         let target_path = path.to_path_buf();
                         self.open_file(&target_path);
@@ -1367,6 +1379,15 @@ impl App {
                         self.focus = Focus::EDITOR(EditorFocus::MAIN);
                     }
                 }
+            KeyCode::Enter => match &self.focus {
+                Focus::SEARCH => {
+                    let cwd = self.shell.borrow().cwd().to_path_buf();
+
+                    if let Some(MenuScreen::SEARCH(popup)) = &mut self.menu_screen {
+                        popup.search(&cwd);
+                    }
+                }
+                
                 Focus::SHELL => {
                     self.input.handle_event(&Event::Key(key_event));
                 }
@@ -1422,6 +1443,8 @@ impl App {
                         }
                     }
                 },
+                _ => {
+                }
             },
 
             KeyCode::Char('?') => {

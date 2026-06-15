@@ -40,7 +40,7 @@ pub struct FileTree {
     shell: Rc<RefCell<Shell>>,
 }
 
-
+#[derive(Debug)]
 pub enum FileType<T> {
     File(T),
     Directory(T),
@@ -216,9 +216,9 @@ impl FileTree {
 
     pub fn change_dir(&mut self, path: PathBuf) {
         self.file_entries.clear();
-
+        
         self.file_entries.push(FileEntry {
-            path: PathBuf::new(),
+            path: path.parent().unwrap_or(&path).to_path_buf(),            
             basename: "..".to_string(),
             depth: 1,
             is_dir: true,
