@@ -1150,7 +1150,6 @@ impl App {
                             let content = self.editor_panes[index].pane.get_content();
                                     
                             let hash = crc64::crc64(0, content.as_bytes()); 
-                            self.editor_panes[index].hash = hash;
 
                             let popup_menu = if self.editor_panes[index].hash != hash {
                                 popup_menu.add_field("Save?".to_owned())
@@ -1160,6 +1159,7 @@ impl App {
 
 																    if self.editor_panes.len() == 0 {
 																		    self.selected_editor = None;
+                                        self.focus = Focus::FILES;
 																    } else if self.editor_panes.len() <= index {
 																		    self.selected_editor = Some(self.editor_panes.len() - 1);
 																    }
@@ -1195,8 +1195,7 @@ impl App {
                                 let content = self.editor_panes[index].pane.get_content();
                                     
                                 let hash = crc64::crc64(0, content.as_bytes()); 
-                                self.editor_panes[index].hash = hash;
-
+                                
                                 let popup_menu = if self.editor_panes[index].hash != hash {
                                     popup_menu.add_field("Save?".to_owned())
                                 } else {
@@ -1206,6 +1205,7 @@ impl App {
 
 																		    if self.editor_panes.len() == 0 {
 																				    self.selected_editor = None;
+                                            self.focus = Focus::FILES;
 																		    } else if self.editor_panes.len() <= index {
 																				    self.selected_editor = Some(self.editor_panes.len() - 1);
 																		    }
@@ -1428,6 +1428,7 @@ impl App {
 
 																		if self.editor_panes.len() == 0 {
 																				self.selected_editor = None;
+                                        self.focus = Focus::FILES;
 																		} else if self.editor_panes.len() <= index {
 																				self.selected_editor = Some(self.editor_panes.len() - 1);
 																		}																
