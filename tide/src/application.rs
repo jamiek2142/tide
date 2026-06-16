@@ -1311,7 +1311,11 @@ impl App {
 
                 match self.file_system.get_selected() {                    
                     FileType::Directory(path) => self.change_dir(&path),
-                    FileType::File(path) => self.open_file(&path),
+                    FileType::File(path) => {
+                        self.open_file(&path);
+                        self.preview_pane = None;
+                        self.focus = Focus::EDITOR(EditorFocus::MAIN);
+                    }
                     FileType::None => { /* Nothing to do. */ }
                 }
             }
@@ -1376,7 +1380,6 @@ impl App {
                         self.open_file(&target_path);
 
                         self.preview_pane = None;
-                        self.focus = Focus::EDITOR(EditorFocus::MAIN);
                     }
                 }
             KeyCode::Enter => match &self.focus {
