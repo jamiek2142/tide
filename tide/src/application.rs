@@ -35,8 +35,6 @@ use ratatui::{
 
 use ratatui_code_editor::{actions::MoveDown, editor::Editor, theme::vesper};
 
-use ansi_to_tui::IntoText as _;
-
 /*****************************************************
  * Types
  *****************************************************/
@@ -168,7 +166,7 @@ impl Default for Split {
     fn default() -> Self {
         Self {
             horizontal: 20,
-            vertical: 80,
+            vertical: 100,
         }
     }
 }
@@ -196,7 +194,7 @@ impl Split {
             height,
         }
     }
-
+    
     pub fn get_vertical_split_hitbox(&self, frame: &Rect) -> Rect {
         const TOLERANCE: u16 = 3;
 
@@ -216,7 +214,7 @@ impl Split {
             width,
             height,
         }
-    }
+    } 
 
     pub fn set_horizontal_percentage(&mut self, point: (u16, u16), frame: &Rect) {
         self.horizontal = point.0 * 100 / frame.width;
@@ -230,11 +228,12 @@ impl Split {
         const MAX_PERCENT: u16 = 100;
         (self.horizontal, MAX_PERCENT.saturating_sub(self.horizontal))
     }
-
+    /*
     pub fn get_vertical_split_percentage(&self) -> (u16, u16) {
         const MAX_PERCENT: u16 = 100;
         (self.vertical, MAX_PERCENT.saturating_sub(self.vertical))
     }
+    */
 }
 
 impl App {
@@ -322,7 +321,7 @@ impl App {
     //       components, but API is tricky w/o context of UI elements.
     fn draw(&mut self, frame: &mut Frame) -> anyhow::Result<()> {
         let (left, right) = self.split.get_horizontal_split_percentage();
-        let (top, bottom) = self.split.get_vertical_split_percentage();
+        //let (top, bottom) = self.split.get_vertical_split_percentage();
 
         let [file_area, main_area] =
             Layout::horizontal([Constraint::Percentage(left), Constraint::Percentage(right)])
@@ -331,15 +330,16 @@ impl App {
         else {
             todo!()
         };
-        let [editor_area, shell_output, shell_input] = Layout::vertical([
-            Constraint::Percentage(top),
-            Constraint::Percentage(bottom),
-            Constraint::Min(2),
+        let [editor_area] = Layout::vertical([
+            Constraint::default(),
+            //Constraint::Percentage(bottom),
+            //Constraint::Min(2),
         ])
         .split(main_area)[..] else {
             todo!()
         };
  
+        /*
         let text = " > ".to_string() + self.input.get_input_to_render();
 
         let input_block = {
@@ -355,10 +355,10 @@ impl App {
 
         let input = Paragraph::new(text)
             .style(Style::default())
-            .block(input_block);
+          .block(input_block);
 
         let start_pos = (self.output.len() as u16).saturating_sub(shell_output.height + self.output_pos) as usize;
-
+ 
         let last_lines = &self.output[start_pos..];
 
         let text: Text = last_lines
@@ -381,7 +381,7 @@ impl App {
         let output = Paragraph::new(text)
             .style(Style::default())
             .block(output_block);
-
+        */
         let items: Vec<ListItem> = self
             .file_system
             .iter()
@@ -430,14 +430,16 @@ impl App {
 
         // Render the fils and shell input. Set the cursor position if the shell is active focus.
         frame.render_stateful_widget(list, file_area, &mut self.file_system.get_state());
-        frame.render_widget(input, shell_input);
+        //frame.render_widget(input, shell_input);
 
+        /*
         if self.focus == Focus::SHELL {
             let cursor_offset_x = 4 + shell_input.x + self.input.get_cursor_position();
             let cursor_offset_y = shell_input.y;
 
             frame.set_cursor_position((cursor_offset_x, cursor_offset_y));
         }
+        */
 
         // Render text editor and shell output. TODO: cleanup.
         let editor_area = match self.selected_editor {
@@ -561,7 +563,7 @@ impl App {
             }
         };
 
-        frame.render_widget(output, shell_output);
+        //frame.render_widget(output, shell_output);
 
         // Get a copy of the working directory for later. 
         let working_dir = self.shell.borrow().cwd().to_path_buf();
@@ -782,13 +784,15 @@ impl App {
         };
 
         // Create a rect which maps to the entire shell area for handling mouse events.
-        let shell_area = Rect::new(
+        let shell_area = Rect::new(0,0,0,0);
+        /*
             shell_output.x,
             shell_output.y,
             shell_output.width,
             shell_output.height + shell_input.height,
         );
-
+        */
+    
         // Handle events after drawing the layout so we can use the areas drawn as part of the app.
         self.handle_events(&frame.area(), &editor_area, &shell_area, &file_area, menu_screen.as_ref())?;
 
