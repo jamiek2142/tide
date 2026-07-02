@@ -885,6 +885,14 @@ impl App {
     }
 
     fn preview_file(&mut self, target_path: &Path) {
+    
+        for (k, pane) in self.editor_panes.iter().enumerate() {
+            if pane.path == target_path {
+                self.preview_pane = None;
+                self.selected_editor = Some(k);
+                return;
+            }
+        }
         
         let Some((editor, hash)) = self.load_file(target_path) else {
             return;
