@@ -1164,7 +1164,7 @@ impl App {
                             let hash = crc64::crc64(0, content.as_bytes()); 
 
                             let popup_menu = if self.editor_panes[index].hash != hash {
-                                popup_menu.add_field("Save?".to_owned())
+                                popup_menu.add_field("Save?".to_owned()).add_field("Reload?".to_owned())
                             } else {
                                 if let Some(index) = self.selected_editor {
 																		self.editor_panes.remove(index);
@@ -1210,6 +1210,7 @@ impl App {
                                 
                                 let popup_menu = if self.editor_panes[index].hash != hash {
                                     popup_menu.add_field("Save?".to_owned())
+                                              .add_field("Reload?".to_owned())
                                 } else {
                                     
                                     if let Some(index) = self.selected_editor {
@@ -1431,6 +1432,27 @@ impl App {
 
                                     close_menu = true;
                                 };
+                            }
+                            
+                            if popup_menu.selected("Reload?".to_owned()) {
+                                
+                                if let Some(index) = self.selected_editor {
+                                    let editor = &mut self.editor_panes[index];
+
+                                    let content = if editor.path.exists() {
+                                        match fs::read_to_string(editor.path.clone()) {
+                                            Ok(ok) => ok,
+                                            Err(_err) => return,
+                                            }
+                                        } else {
+                                            return;
+                                        };
+
+                                    editor.pane.set_content(&content);
+                                    
+                                    close_menu = true;
+                                }
+                                
                             }
 
                             if popup_menu.selected("Exit?".to_owned()) {
