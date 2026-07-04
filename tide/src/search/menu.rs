@@ -70,6 +70,10 @@ impl SearchMenu {
         self.popup.get_state()
     }
 
+    pub fn get_cursor_position (& self) -> u16 {
+        self.input.get_cursor_position()
+    }
+
     pub fn get_list_items(&self) -> Vec<SearchItem> {
         self.popup
             .get_list_items()

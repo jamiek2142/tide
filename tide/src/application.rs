@@ -774,7 +774,11 @@ impl App {
 
                     frame.render_widget(input, input_area);
                 }
-
+    
+                let cursor_offset_x = 4 +  input_area.x + popup.get_cursor_position();
+                let cursor_offset_y = input_area.y;
+ 
+                frame.set_cursor_position((cursor_offset_x, cursor_offset_y));
                 frame.render_stateful_widget(popup_list, search_area, popup.get_state());
 
                 Some((MenuScreenType::SEARCH, search_area))

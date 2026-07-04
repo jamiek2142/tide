@@ -55,11 +55,11 @@ impl Input {
     pub fn get_input_to_render(&self) -> &str {
         self.command_buffer[self.command_index].as_str()
     }
-/*
+
     pub fn get_cursor_position(&self) -> u16 {
         self.cursor_position.try_into().unwrap_or_default()
     }
-*/
+
     pub fn handle_event(&mut self, event: &Event) {
         match event {
             Event::Key(key) => {
