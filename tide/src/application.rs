@@ -459,7 +459,7 @@ impl App {
            	 		}).collect::<Vec<String>>())
 									.select(self.selected_editor.unwrap_or_default())
 									.style(Color::White)
-        					.highlight_style(Style::default().magenta().on_black().bold());
+        					.highlight_style(Style::default().fg(Color::LightMagenta).bold());
 
                 let editor = & self.editor_panes[index];
 
