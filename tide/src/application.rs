@@ -676,6 +676,7 @@ impl App {
                 };
                 
                 /* Render the search list of items. */
+                let mut previous_metadata = String::new();
                 let popup_items = popup.get_list_items();
                 let popup_items: Vec<ListItem> = popup_items
                     .iter()
@@ -699,23 +700,28 @@ impl App {
                         let metadata = get_path_to_render(&path, search_area.width);
 
                         let meta_text = Span::styled(
-                            metadata,
+                            metadata.clone(),
                             Style::default()
                                 .fg(Color::LightMagenta)
                                 .add_modifier(Modifier::BOLD),
                         );
 
                         let line_text = Span::raw(if let Some(line_num) = line_num {
-                            format!(":{}\n", line_num)
+                            format!("{}:\n", line_num)
                         } else {
                             "\n".to_owned()
                         });
 
-                        let meta_text = Line::from(vec![meta_text, line_text]);
-
+                       
                         let result_text = Span::raw(item.display());
-
-                        let text = Text::from(vec![meta_text.into(), result_text.into()]);
+                        let result_text = Line::from(vec![line_text, result_text]);
+                         
+                        let text = if previous_metadata != metadata {
+                                previous_metadata = metadata;
+                                Text::from(vec![meta_text.into(), result_text.into()])
+                        } else {
+                                Text::from(vec![result_text.into()])
+                        };
 
                         ListItem::new(text).style(style)
                     })
