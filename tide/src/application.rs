@@ -886,7 +886,7 @@ impl App {
             if let Some(lang) = extension_to_language_map.get(extension) {
                 lang.to_string()
             } else {
-                "shell".to_string()
+                "text".to_string()
             }
         };
             

@@ -1431,9 +1431,9 @@ dependencies = [
 
 [[package]]
 name = "ratatui-code-editor"
-version = "0.0.4"
+version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b21a0bcd9cdca9aba7cbd8a4167858f9b34fef142164f2f83757f6a65bf9d1e7"
+checksum = "88235535f73e5c3c1c666bfb232e9f61f8c95b72cb1d77558fd655e48c752198"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1441,6 +1441,7 @@ dependencies = [
  "ratatui-core",
  "ropey",
  "rust-embed",
+ "similar",
  "streaming-iterator",
  "tree-sitter",
  "tree-sitter-bash",
@@ -1844,6 +1845,12 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
 name = "siphasher"
